@@ -64,7 +64,7 @@
       const g = games.find((x) => x.id === id);
       if (!g) return { error: "Jogo não existe." };
       return {
-        game: { id: g.id, title: g.title, subtitle: g.subtitle, ready: g.has_rom && installed },
+        game: { id: g.id, title: g.title, subtitle: g.subtitle, ready: g.has_rom && installed, has_rom: g.has_rom },
         emulator: { id: "mgba", name: "mGBA" },
         save: saveState.exists ? { exists: true, blank: saveState.blank, size: 131072, modified: saveState.modified }
           : { exists: false, blank: false, size: 0, modified: null },
@@ -76,6 +76,7 @@
     restore_backup: async (id, name, play) => { if (play) playing.add(id); return { ok: true }; },
     delete_backup: async (id, name) => { backups = backups.filter((b) => b.name !== name); return { ok: true }; },
     delete_save: async () => { saveState.exists = false; return { ok: true }; },
+    delete_game: async (id) => { const g = games.find((x) => x.id === id); if (g) g.has_rom = false; return { ok: true }; },
     pick_import_file: async () => ({ path: "C:\\Users\\voce\\Downloads\\firered-100pct.sav" }),
     import_save: async () => ({ ok: true }),
     export_save: async () => ({ ok: true, path: "C:\\Users\\voce\\Desktop\\firered.sav" }),

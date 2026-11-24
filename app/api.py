@@ -226,9 +226,9 @@ class Api:
         try:
             emu, game = self._find(game_id)
             if needs_closed and game_id in self._running:
-                return {"error": "Feche o jogo no emulador antes de mexer no save."}
+                return {"error": "Feche o jogo no emulador antes de continuar."}
             return action(emu, game) or {"ok": True}
-        except (catalog.CatalogError, saves.SaveError) as exc:
+        except (catalog.CatalogError, saves.SaveError, downloader.DownloadError) as exc:
             return {"error": str(exc)}
 
     def get_saves(self, game_id: str) -> dict:
@@ -236,7 +236,8 @@ class Api:
         def action(emu, game):
             return {
                 "game": {"id": game.id, "title": game.title, "subtitle": game.subtitle,
-                         "ready": downloader.is_game_ready(emu, game)},
+                         "ready": downloader.is_game_ready(emu, game),
+                         "has_rom": downloader.rom_path(game).is_file()},
                 "emulator": {"id": emu.id, "name": emu.name},
                 "save": saves.save_info(emu, game),
                 "backups": [{"name": b.name, "created": b.created, "size": b.size, "auto": b.auto,
@@ -272,6 +273,16 @@ class Api:
 
     def delete_save(self, game_id: str) -> dict:
         return self._saves_action(game_id, lambda emu, game: saves.delete_save(emu, game), needs_closed=True)
+
+    def delete_game(self, game_id: str) -> dict:
+        """Exclui a ROM do PC. Saves e backups continuam guardados."""
+        def action(emu, game):
+            with self._lock:
+                downloading = game_id in self._jobs
+            if downloading:
+                raise downloader.DownloadError("Espere o download terminar, ou cancele-o, antes de excluir.")
+            downloader.delete_rom(game)
+        return self._saves_action(game_id, action, needs_closed=True)
 
     @staticmethod
     def _file_dialog(kind, **options) -> Path | None:

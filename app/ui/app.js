@@ -442,7 +442,10 @@ function renderSaves(emu) {
     h("div", {},
       h("h1", { class: "saves-title" }, g.title),
       g.subtitle && h("p", { class: "sub-head" }, g.subtitle),
-      h("div", { class: "saves-play" }, playButton)));
+      h("div", { class: "saves-play" }, playButton,
+        // só aparece se a ROM está no PC; bloqueado com o jogo aberto
+        g.has_rom && h("button", { class: "btn-small danger", type: "button", disabled: locked,
+          title: locked ? "Feche o jogo no emulador primeiro." : null, onclick: onDeleteGame }, "Excluir jogo"))));
 
   const status = !save.exists
     ? "Ainda sem save. Jogue e salve dentro do jogo, ou importe um arquivo .sav."
@@ -555,6 +558,23 @@ async function onDeleteSave() {
   const res = await api().delete_save(route.gameId);
   if (res.error) return toast(res.error);
   toast("Save apagado. Dá para restaurá-lo pela lista de backups.", "ok");
+  await reloadSaves();
+}
+
+async function onDeleteGame() {
+  const title = savesData.game.title;
+  const ok = await confirmDialog({
+    title: "Excluir o jogo do PC?",
+    body: `A ROM de ${title} será apagada do seu computador para liberar espaço. `
+      + "Seus saves e backups continuam guardados: se baixar o jogo de novo, você continua de onde parou. "
+      + "Para apagar o save, use Apagar save.",
+    confirm: "Excluir jogo", danger: true,
+  });
+  if (!ok) return;
+  const res = await api().delete_game(route.gameId);
+  if (res.error) return toast(res.error);
+  toast("Jogo excluído. Dá para baixar de novo quando quiser.", "ok");
+  await loadLibrary();   // a grade passa a mostrar "Baixar" para este jogo
   await reloadSaves();
 }
 

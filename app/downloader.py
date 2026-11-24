@@ -181,6 +181,17 @@ def ensure_rom(game: Game, on_progress: ProgressCallback | None = None,
     return dest
 
 
+def delete_rom(game: Game) -> None:
+    """Apaga só a ROM (libera espaço). A capa, o save e os backups ficam: baixar de novo continua de onde parou."""
+    rom = rom_path(game)
+    if not rom.is_file():
+        raise DownloadError("A ROM desse jogo já não está no PC.")
+    try:
+        rom.unlink()
+    except OSError as exc:
+        raise DownloadError(f"Não consegui apagar a ROM: {exc.strerror or exc}") from exc
+
+
 def _image_extension(path: Path) -> str:
     """Descobre o tipo da imagem pelos primeiros bytes (o Drive não garante a extensão)."""
     head = path.read_bytes()[:12]
