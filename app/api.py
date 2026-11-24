@@ -10,8 +10,9 @@ import mimetypes
 import threading
 import time
 from pathlib import Path
+from pathlib import Path
 
-from . import catalog, downloader, launcher
+from . import catalog, downloader, launcher, saves
 
 # Fatias da barra de progresso quando o emulador também precisa ser baixado.
 _EMU_SHARE = 0.35      # baixar o emulador
@@ -174,32 +175,139 @@ class Api:
     # ---------- jogar ----------
 
     def play(self, game_id: str) -> dict:
-        """Abre o jogo no emulador e acompanha em uma thread até ele fechar."""
+        """Backup do save, abre o jogo no emulador e acompanha em uma thread até ele fechar."""
         try:
             emu, game = self._find(game_id)
+            if game_id in self._running:
+                return {"error": f"{game.title} já está aberto."}
+            warning = None
+            try:
+                saves.backup_now(emu, game, "antes-de-jogar")
+            except saves.SaveError as exc:  # sem backup o jogo ainda abre, mas o usuário fica sabendo
+                warning = f"Não consegui fazer o backup antes de jogar: {exc}"
             with self._lock:
                 if game_id in self._running:
                     return {"error": f"{game.title} já está aberto."}
-                # (etapa 5: aqui entra o backup automático do save, ANTES de abrir)
                 proc = launcher.launch(emu, game)
                 self._running.add(game_id)
         except (catalog.CatalogError, launcher.LaunchError) as exc:
             return {"error": str(exc)}
         threading.Thread(target=self._watch, args=(emu, game, proc), daemon=True).start()
-        return {"ok": True}
+        return {"ok": True, "warning": warning} if warning else {"ok": True}
 
     def _watch(self, emu, game, proc) -> None:
         started = time.monotonic()
         code = proc.wait()
-        # (etapa 5: aqui entra o backup automático do save, DEPOIS de fechar)
+        message = None
+        try:  # o jogo ainda conta como "aberto" até o backup terminar: ninguém troca o save no meio
+            saves.backup_now(emu, game, "depois-de-jogar")
+        except saves.SaveError as exc:
+            message = f"Não consegui fazer o backup depois de jogar: {exc}"
         with self._lock:
             self._running.discard(game.id)
             if code != 0 and time.monotonic() - started < 5:
-                self._play_errors[game.id] = (f"O {emu.name} fechou logo ao abrir (código {code}). "
-                                              "Confira se a ROM não está corrompida.")
+                message = (f"O {emu.name} fechou logo ao abrir (código {code}). "
+                           "Confira se a ROM não está corrompida.")
+            if message:
+                self._play_errors[game.id] = message
 
     def get_running(self) -> dict:
-        """Jogos abertos agora e erros de abertura (entregues uma vez)."""
+        """Jogos abertos agora e avisos/erros de abertura (entregues uma vez)."""
         with self._lock:
             errors, self._play_errors = self._play_errors, {}
             return {"running": sorted(self._running), "errors": errors}
+
+    # ---------- saves ----------
+
+    def _saves_action(self, game_id: str, action, needs_closed: bool = False) -> dict:
+        """Roda action(emu, game) e converte erros esperados em {"error": ...}.
+        needs_closed: ações que trocam/apagam o save não rodam com o jogo aberto, porque o emulador
+        grava o save de novo ao fechar e desfaria a troca."""
+        try:
+            emu, game = self._find(game_id)
+            if needs_closed and game_id in self._running:
+                return {"error": "Feche o jogo no emulador antes de mexer no save."}
+            return action(emu, game) or {"ok": True}
+        except (catalog.CatalogError, saves.SaveError) as exc:
+            return {"error": str(exc)}
+
+    def get_saves(self, game_id: str) -> dict:
+        """Tudo da tela de saves de um jogo: save atual, lista de backups e se o jogo está aberto."""
+        def action(emu, game):
+            return {
+                "game": {"id": game.id, "title": game.title, "subtitle": game.subtitle,
+                         "ready": downloader.is_game_ready(emu, game)},
+                "emulator": {"id": emu.id, "name": emu.name},
+                "save": saves.save_info(emu, game),
+                "backups": [{"name": b.name, "created": b.created, "size": b.size, "auto": b.auto,
+                             "reason": saves.REASONS[b.reason]} for b in saves.list_backups(game)],
+                "running": game.id in self._running,
+            }
+        return self._saves_action(game_id, action)
+
+    def backup_save(self, game_id: str) -> dict:
+        def action(emu, game):
+            if saves.backup_now(emu, game, "manual"):
+                return {"ok": True, "created": True}
+            exists = saves.save_info(emu, game)["exists"]
+            return {"ok": True, "created": False, "why": "igual" if exists else "sem-save"}
+        return self._saves_action(game_id, action)
+
+    def restore_backup(self, game_id: str, name: str, play: bool = False) -> dict:
+        """Troca o save atual pelo backup (guardando o atual antes). Com play=True já abre o jogo."""
+        def action(emu, game):
+            saves.restore(emu, game, name)
+            return {"ok": True}
+        result = self._saves_action(game_id, action, needs_closed=True)
+        if play and result.get("ok"):
+            played = self.play(game_id)
+            if "error" in played:
+                result["play_error"] = played["error"]
+            elif "warning" in played:
+                result["play_error"] = played["warning"]
+        return result
+
+    def delete_backup(self, game_id: str, name: str) -> dict:
+        return self._saves_action(game_id, lambda emu, game: saves.delete_backup(game, name))
+
+    def delete_save(self, game_id: str) -> dict:
+        return self._saves_action(game_id, lambda emu, game: saves.delete_save(emu, game), needs_closed=True)
+
+    @staticmethod
+    def _file_dialog(kind, **options) -> Path | None:
+        """Janela do Windows para escolher/salvar arquivo. None se o usuário cancelar."""
+        import webview
+        if not webview.windows:
+            raise saves.SaveError("A janela do app não está disponível.")
+        result = webview.windows[0].create_file_dialog(kind, **options)
+        if isinstance(result, (list, tuple)):  # abrir devolve uma lista; salvar, um texto
+            result = result[0] if result else None
+        return Path(result) if result else None
+
+    def pick_import_file(self) -> dict:
+        """Passo 1 de importar: o usuário escolhe o .sav. A importação em si vem depois da confirmação."""
+        import webview
+        try:
+            path = self._file_dialog(webview.FileDialog.OPEN,
+                                     file_types=("Save de jogo (*.sav;*.srm)", "Todos os arquivos (*.*)"))
+        except saves.SaveError as exc:
+            return {"error": str(exc)}
+        return {"path": str(path)} if path else {"cancelled": True}
+
+    def import_save(self, game_id: str, path: str) -> dict:
+        return self._saves_action(game_id, lambda emu, game: saves.import_save(emu, game, Path(path)),
+                                  needs_closed=True)
+
+    def export_save(self, game_id: str) -> dict:
+        def action(emu, game):
+            import webview
+            if saves.current_save(emu, game) is None:
+                raise saves.SaveError("Esse jogo ainda não tem save para exportar.")
+            target = saves.save_path(emu, game)
+            dest = self._file_dialog(webview.FileDialog.SAVE, save_filename=target.name,
+                                     file_types=(f"Save de jogo (*{target.suffix})", "Todos os arquivos (*.*)"))
+            if dest is None:
+                return {"cancelled": True}
+            saves.export_save(emu, game, dest)
+            return {"ok": True, "path": str(dest)}
+        return self._saves_action(game_id, action)
