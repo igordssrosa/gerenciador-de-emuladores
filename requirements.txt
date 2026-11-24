@@ -1,0 +1,4 @@
+gdown>=5.2
+pywebview>=5.0
+py7zr>=0.22
+pyinstaller>=6.0

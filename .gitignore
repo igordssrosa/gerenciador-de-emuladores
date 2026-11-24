@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# PyInstaller
+build/
+dist/
+
+# Dados do usuário: NUNCA versionar ROMs, emuladores, saves, capas
+*.gba
+*.sav
+*.srm
+*.state
+*.ss[0-9]
+*.7z
+*.zip
+emulators/
+icons/
+games/
+backups/
+catalog.cache.json
+settings.json
