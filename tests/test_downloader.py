@@ -76,3 +76,12 @@ class DownloaderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FriendlyErrorTests(unittest.TestCase):
+    def test_mensagens_amigaveis(self):
+        f = downloader.friendly_download_error
+        self.assertIn("espaço", f(OSError(28, "No space left on device")))
+        self.assertIn("limitou", f(Exception("Too many users have viewed or downloaded this file recently")))
+        self.assertIn("internet", f(Exception("Connection aborted")))
+        self.assertIn("Não consegui baixar", f(Exception("algo estranho")))

@@ -19,6 +19,11 @@ def print_catalog() -> None:
 
 
 def open_window() -> None:
+    from . import webview2
+
+    if not webview2.ensure_installed():  # sem WebView2 não há janela; a função já explicou o motivo
+        raise SystemExit(1)
+
     import webview  # import tardio: o modo --catalog não precisa dele
 
     from .api import Api
@@ -90,6 +95,9 @@ def main() -> None:
     paths.ensure_dirs()
     if "--selftest" in sys.argv:
         selftest()
+    elif "--version" in sys.argv:
+        from .version import VERSION
+        print(VERSION)
     elif "--catalog" in sys.argv:
         print_catalog()
     else:

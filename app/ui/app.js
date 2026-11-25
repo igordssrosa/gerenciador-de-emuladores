@@ -614,6 +614,18 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "Escape" || e.key === "Backspace") && route.view !== "home") goBack();
 });
 
+// Aviso de versão nova: roda em segundo plano e nunca atrapalha a abertura do app.
+async function checkUpdate() {
+  try {
+    const info = await api().check_update();
+    if (!info.available) return;
+    const btn = $("#update");
+    btn.textContent = `Nova versão ${info.version}`;
+    btn.hidden = false;
+    btn.addEventListener("click", () => api().open_url(info.url));
+  } catch (e) { /* sem internet: ignora */ }
+}
+
 (async function init() {
   await whenReady();
   await loadLibrary();
@@ -625,5 +637,6 @@ document.addEventListener("keydown", (e) => {
   }
   if (window.__mockJobs) window.__mockJobs(jobs);  // idem: simula um download em andamento
   render();
+  checkUpdate();
   if (window.__mockReady) window.__mockReady();  // idem: abre uma confirmação para eu ver o visual
 })();

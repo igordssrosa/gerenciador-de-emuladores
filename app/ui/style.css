@@ -82,6 +82,8 @@ main:focus { outline: none; }
   transition: color .15s, border-color .15s, background .15s;
 }
 .ghost:hover:not(:disabled) { color: var(--ink); border-color: rgba(190, 180, 255, .5); background: rgba(255, 255, 255, .05); }
+.actions { display: flex; align-items: center; gap: 10px; }
+.update { color: var(--lcd); border-color: rgba(200, 230, 160, .45); }
 .ghost:disabled { cursor: progress; opacity: .7; }
 
 /* ---------- estrutura das telas ---------- */

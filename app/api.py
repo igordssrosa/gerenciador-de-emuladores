@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from pathlib import Path
 
-from . import catalog, downloader, launcher, saves
+from . import catalog, downloader, launcher, saves, updates
 
 # Fatias da barra de progresso quando o emulador também precisa ser baixado.
 _EMU_SHARE = 0.35      # baixar o emulador
@@ -76,6 +76,21 @@ class Api:
             self._catalog, self._catalog_error = catalog.refresh(), ""
         except catalog.CatalogError as exc:
             return {"error": str(exc)}
+        return {"ok": True}
+
+    def check_update(self) -> dict:
+        """Pergunta ao GitHub se há versão nova (a interface mostra um aviso no topo)."""
+        return updates.check()
+
+    @staticmethod
+    def open_url(url: str) -> dict:
+        """Abre a página da versão nova no navegador. Só aceita links do GitHub do projeto."""
+        import webbrowser
+
+        from .version import GITHUB_REPO
+        if not url.startswith(f"https://github.com/{GITHUB_REPO}/"):
+            return {"error": "Link não permitido."}
+        webbrowser.open(url)
         return {"ok": True}
 
     # ---------- imagens ----------

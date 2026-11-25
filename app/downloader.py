@@ -60,6 +60,18 @@ def is_game_ready(emu: Emulator, game: Game) -> bool:
 
 # ---------- download de um arquivo ----------
 
+def friendly_download_error(exc: Exception) -> str:
+    """Troca o erro técnico do gdown/rede por uma frase que quem não programa entende."""
+    text = str(exc).lower()
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:  # 28 = disco cheio
+        return "Sem espaço no disco. Libere espaço e tente de novo."
+    if "too many users" in text or "quota" in text or "cannot retrieve the public link" in text:
+        return ("O Google Drive limitou este arquivo por excesso de downloads. "
+                "Isso passa sozinho em até 24 horas; tente de novo mais tarde.")
+    if any(w in text for w in ("connection", "resolve", "timed out", "timeout", "network", "ssl", "proxy")):
+        return "Sem conexão com a internet (ou o Drive está fora do ar). Confira a rede e tente de novo."
+    return f"Não consegui baixar do Drive: {exc}"
+
 def download_file(file_id: str, dest: Path, on_progress: Callable[[int, "int | None"], None] | None = None,
                   cancel: threading.Event | None = None) -> Path:
     """Baixa um arquivo do Drive para `dest`. Só aparece em `dest` se terminar com sucesso."""
@@ -80,7 +92,7 @@ def download_file(file_id: str, dest: Path, on_progress: Callable[[int, "int | N
         except Exception as exc:
             if cancel is not None and cancel.is_set():
                 raise DownloadCancelled("Download cancelado.") from exc
-            raise DownloadError(f"Falha ao baixar do Drive: {exc}") from exc
+            raise DownloadError(friendly_download_error(exc)) from exc
         if not result or not tmp_file.is_file() or tmp_file.stat().st_size == 0:
             raise DownloadError("O Drive não entregou o arquivo (link privado ou sem internet?).")
         shutil.move(str(tmp_file), str(dest))
