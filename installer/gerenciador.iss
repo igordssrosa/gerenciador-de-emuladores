@@ -1,7 +1,7 @@
 ; Instalador do Gerenciador de Emuladores (Inno Setup). Gerar: powershell -File build.ps1
 ; Instala só para o usuário atual (sem pedir senha de administrador).
 #define AppName "Gerenciador de Emuladores"
-#define AppVersion "1.1.3"   ; mantenha igual a app/version.py
+#define AppVersion "1.1.4"   ; mantenha igual a app/version.py
 #define AppExe "GerenciadorEmuladores.exe"
 
 [Setup]
