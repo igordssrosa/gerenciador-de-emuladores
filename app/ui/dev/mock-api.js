@@ -69,6 +69,9 @@
         save: saveState.exists ? { exists: true, blank: saveState.blank, size: 131072, modified: saveState.modified }
           : { exists: false, blank: false, size: 0, modified: null },
         backups: backups.map((b) => ({ ...b })),
+        states: [{ name: "firered.ss2", slot: "ss2", modified: Date.now() / 1000 - 600, size: 410000 },
+          { name: "firered.ss1", slot: "ss1", modified: Date.now() / 1000 - 86400, size: 410000 }],
+        can_play_state: true,
         running: savesMode === "open" || playing.has(id),
       };
     },

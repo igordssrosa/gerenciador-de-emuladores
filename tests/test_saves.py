@@ -1,4 +1,5 @@
 """Testes de saves e backups (usam pastas temporárias; nada toca no AppData real)."""
+import os
 import tempfile
 import time
 import unittest
@@ -25,6 +26,38 @@ class SavesTests(unittest.TestCase):
     def write_save(self, data: bytes):
         self.save.parent.mkdir(parents=True, exist_ok=True)
         self.save.write_bytes(data)
+
+    def test_lista_save_states_do_mais_recente_para_o_mais_antigo(self):
+        emu = catalog.parse({"emulators": [{"id": "e", "name": "E", "executable": "e.exe", "args": ["{rom}"],
+                                            "state_extensions": [".ss1", ".ss2", ".ss3"], "state_args": ["-t", "{state}", "{rom}"],
+                                            "games": [{"id": "g", "title": "G", "rom": {"file_id": "x", "filename": "jogo.gba"}}]}]}).emulators[0]
+        folder = self.save.parent
+        folder.mkdir(parents=True, exist_ok=True)
+        for name, when in (("jogo.ss1", 1000), ("jogo.ss2", 3000), ("outro.ss3", 5000)):  # outro.ss3 é de outra ROM
+            (folder / name).write_bytes(b"s")
+            os.utime(folder / name, (when, when))
+        self.assertEqual([s.name for s in saves.list_states(emu, emu.games[0])], ["jogo.ss2", "jogo.ss1"])
+        self.assertEqual(saves.find_state(emu, emu.games[0], "jogo.ss1").slot, "ss1")
+        with self.assertRaises(saves.SaveError):
+            saves.find_state(emu, emu.games[0], "..\..\jogo.ss1")   # só nomes da lista
+
+    def test_exclui_so_o_state_escolhido(self):
+        emu = catalog.parse({"emulators": [{"id": "e", "name": "E", "executable": "e.exe", "args": ["{rom}"],
+                                            "state_extensions": [".ss1", ".ss2"],
+                                            "games": [{"id": "g", "title": "G", "rom": {"file_id": "x", "filename": "jogo.gba"}}]}]}).emulators[0]
+        folder = self.save.parent
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "jogo.ss1").write_bytes(b"1")
+        (folder / "jogo.ss2").write_bytes(b"2")
+        self.write_save(b"A" * 100)
+        saves.delete_state(emu, emu.games[0], "jogo.ss1")
+        self.assertEqual([s.name for s in saves.list_states(emu, emu.games[0])], ["jogo.ss2"])
+        self.assertTrue(self.save.exists())   # o save do jogo (.sav) não é tocado
+        with self.assertRaises(saves.SaveError):
+            saves.delete_state(emu, emu.games[0], "jogo.sav")   # só states da lista
+
+    def test_sem_state_extensions_nao_ha_lista(self):
+        self.assertEqual(saves.list_states(self.emu, self.game), [])
 
     def test_save_fica_ao_lado_da_rom_com_o_nome_dela(self):
         self.assertEqual(self.save.name, "jogo.sav")

@@ -348,7 +348,7 @@ function buildGame(emu, game, index) {
   const open = () => go("saves", emu.id, game.id);
 
   const root = h("article", { class: "game-card", style: `--i:${Math.min(index, 14)}` },
-    h("button", { class: "gc-cover", type: "button", title: "Saves e backups", "aria-label": `Saves e backups de ${game.title}`,
+    h("button", { class: "gc-cover", type: "button", title: "Saves e save states", "aria-label": `Saves de ${game.title}`,
       onclick: open }, placeholder, art),
     h("div", { class: "gc-info" },
       h("h3", { class: "title" }, h("button", { class: "title-btn", type: "button", onclick: open }, game.title)),
@@ -501,8 +501,8 @@ async function poll() {
   }
 }
 
-async function onPlay(gameId) {
-  const res = await api().play(gameId);
+async function onPlay(gameId, state = null) {
+  const res = await api().play(gameId, state);
   if (res && res.error) return toast(res.error);
   if (res && res.warning) toast(res.warning);
   running.add(gameId);
@@ -531,6 +531,9 @@ async function onRefresh() {
 }
 
 // ---------- tela de saves de um jogo ----------
+
+/** "ss1" -> "slot 1" (o mGBA chama o slot de ss0 a ss9). */
+const stateLabel = (slot) => { const m = /(\d+)$/.exec(slot); return m ? `slot ${m[1]}` : slot; };
 
 function renderSaves(emu) {
   const d = savesData;
@@ -573,30 +576,29 @@ function renderSaves(emu) {
     h("h2", {}, "Save atual"),
     h("p", { class: "save-big" }, big),
     h("p", { class: "save-status" }, status),
-    locked && h("p", { class: "hint" }, "O jogo está aberto. Feche o emulador para restaurar, importar ou apagar saves."),
+    locked && h("p", { class: "hint" }, "O jogo está aberto. Feche o emulador para importar um save ou excluir save states."),
     h("div", { class: "tools" },
-      tool("Fazer backup agora", onBackup, { disabled: !save.exists || save.blank, why: "Não há progresso para guardar." }),
       tool("Exportar .sav", onExport, { disabled: !save.exists, why: "Ainda não há save." }),
       tool("Importar .sav", onImport, { disabled: locked, why: lockedWhy })));
 
-  const list = h("ul", { class: "rows" });
-  for (const b of d.backups) {
-    list.append(h("li", { class: "row" },
+  // Save states do emulador (mais recente primeiro). Não têm backup: o clique abre o jogo já carregando o state.
+  const stateList = h("ul", { class: "rows" });
+  for (const s of d.states) {
+    const why = !g.ready ? "Baixe o jogo primeiro." : !d.can_play_state ? "O catálogo não diz como abrir um save state neste emulador." : lockedWhy;
+    stateList.append(h("li", { class: "row" },
       h("div", { class: "row-main" },
-        h("strong", {}, fmtAgo(b.created)),
-        h("span", { class: "row-meta" }, `${fmtDate(b.created)}, ${b.reason}, ${fmtKB(b.size)}`)),
+        h("strong", {}, fmtAgo(s.modified)),
+        h("span", { class: "row-meta" }, `${fmtDate(s.modified)}, ${stateLabel(s.slot)}, ${fmtKB(s.size)}`)),
       h("div", { class: "row-actions" },
-        h("button", { class: "btn-small play", type: "button", disabled: locked || !g.ready,
-          title: !g.ready ? "Baixe o jogo primeiro." : lockedWhy || null, onclick: () => onRestore(b, true) }, "Carregar e jogar"),
-        tool("Restaurar", () => onRestore(b, false), { disabled: locked, why: lockedWhy }),
-        tool("Apagar", () => onDeleteBackup(b), { danger: true }))));
+        h("button", { class: "btn-small play", type: "button", disabled: locked || !g.ready || !d.can_play_state,
+          title: why || null, onclick: () => onPlay(g.id, s.name) }, "Carregar e jogar"),
+        tool("Excluir", () => onDeleteState(s), { disabled: locked, danger: true, why: lockedWhy }))));
   }
-  const backups = h("section", { class: "block" },
-    h("h2", {}, d.backups.length ? `Backups (${d.backups.length})` : "Backups"),
-    d.backups.length
-      ? list
-      : h("p", { class: "save-status" },
-        "Nenhum backup ainda. O app guarda um sozinho antes e depois de cada vez que você joga."));
+  const states = h("section", { class: "block" },
+    h("h2", {}, d.states.length ? `Save states (${d.states.length})` : "Save states"),
+    d.states.length
+      ? stateList
+      : h("p", { class: "save-status" }, "Nenhum save state ainda. Salve um state no emulador e ele aparece aqui."));
 
   // ações que apagam ficam juntas, num bloco só delas
   const riskRow = (title, text, button) => h("li", { class: "row" },
@@ -605,15 +607,11 @@ function renderSaves(emu) {
     h("h2", {}, "Zona de risco"),
     h("ul", { class: "rows" },
       riskRow("Excluir jogo do PC",
-        "Apaga a ROM para liberar espaço. Seus saves e backups continuam guardados.",
+        "Apaga a ROM para liberar espaço. Seus saves e save states continuam guardados.",
         tool("Excluir jogo", () => onDeleteGame(g), { danger: true, disabled: locked || !g.has_rom,
-          why: locked ? lockedWhy : !g.has_rom ? "O jogo não está baixado." : "" })),
-      riskRow("Apagar o save atual",
-        "O app guarda um backup antes, e você pode restaurá-lo pela lista.",
-        tool("Apagar save", onDeleteSave, { danger: true, disabled: !save.exists || locked,
-          why: lockedWhy || (!save.exists ? "Ainda não há save." : "") }))));
+          why: locked ? lockedWhy : !g.has_rom ? "O jogo não está baixado." : "" }))));
 
-  return h("section", { class: "saves" }, head, h("div", { class: "detail-grid" }, current, backups), risk);
+  return h("section", { class: "saves" }, head, states, current, risk);
 }
 
 // ---------- ações dos saves ----------
@@ -634,55 +632,16 @@ function confirmDialog({ title, body, confirm, danger = false }) {
   });
 }
 
-async function onBackup() {
-  const res = await api().backup_save(route.gameId);
-  if (res.error) return toast(res.error);
-  if (res.created) toast("Backup feito.", "ok");
-  else toast(res.why === "igual" ? "O save não mudou desde o último backup." : "Ainda não há save para guardar.", "info");
-  await reloadSaves();
-}
-
-async function onRestore(backup, playAfter) {
-  const title = savesData.game.title;
+async function onDeleteState(state) {
   const ok = await confirmDialog({
-    title: playAfter ? "Carregar este save e jogar?" : "Restaurar este backup?",
-    body: `O save atual de ${title} será trocado pelo de ${fmtDate(backup.created)}. `
-      + "Antes disso, o app guarda um backup do save atual, então nada se perde."
-      + (playAfter ? " Depois o jogo abre." : ""),
-    confirm: playAfter ? "Carregar e jogar" : "Restaurar",
+    title: "Excluir este save state?",
+    body: `O save state de ${fmtDate(state.modified)} (${stateLabel(state.slot)}) será apagado de vez. Isso não pode ser desfeito.`,
+    confirm: "Excluir", danger: true,
   });
   if (!ok) return;
-  const res = await api().restore_backup(route.gameId, backup.name, playAfter);
+  const res = await api().delete_state(route.gameId, state.name);
   if (res.error) return toast(res.error);
-  toast(playAfter ? "Save carregado. Abrindo o jogo." : "Save restaurado.", "ok");
-  if (res.play_error) toast(res.play_error);
-  await reloadSaves();
-}
-
-async function onDeleteBackup(backup) {
-  const ok = await confirmDialog({
-    title: "Apagar este backup?",
-    body: `O backup de ${fmtDate(backup.created)} (${backup.reason.toLowerCase()}) será apagado de vez. Isso não pode ser desfeito.`,
-    confirm: "Apagar backup", danger: true,
-  });
-  if (!ok) return;
-  const res = await api().delete_backup(route.gameId, backup.name);
-  if (res.error) return toast(res.error);
-  toast("Backup apagado.", "ok");
-  await reloadSaves();
-}
-
-async function onDeleteSave() {
-  const ok = await confirmDialog({
-    title: "Apagar o save atual?",
-    body: `O save atual de ${savesData.game.title} será apagado. Antes, o app guarda um backup dele, `
-      + "e você poderá restaurá-lo pela lista de backups.",
-    confirm: "Apagar save", danger: true,
-  });
-  if (!ok) return;
-  const res = await api().delete_save(route.gameId);
-  if (res.error) return toast(res.error);
-  toast("Save apagado. Dá para restaurá-lo pela lista de backups.", "ok");
+  toast("Save state excluído.", "ok");
   await reloadSaves();
 }
 
@@ -691,8 +650,7 @@ async function onDeleteGame(game) {
   const ok = await confirmDialog({
     title: "Excluir o jogo do PC?",
     body: `A ROM de ${game.title} será apagada do seu computador para liberar espaço. `
-      + "Seus saves e backups continuam guardados: se baixar o jogo de novo, você continua de onde parou. "
-      + "Para apagar o save, use Apagar save.",
+      + "Seus saves e save states continuam guardados: se baixar o jogo de novo, você continua de onde parou.",
     confirm: "Excluir jogo", danger: true,
   });
   if (!ok) return;

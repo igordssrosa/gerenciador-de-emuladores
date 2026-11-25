@@ -37,6 +37,23 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(cmd[2].endswith("jogo teste.gba"))   # espaço no nome continua um argumento só
         self.assertEqual(len(cmd), 3)
 
+    def test_com_state_usa_state_args(self):
+        raw = {"emulators": [{"id": "fake", "name": "Fake", "executable": "fake.bat", "args": ["{rom}"],
+                              "state_extensions": [".ss1"], "state_args": ["-t", "{state}", "{rom}"],
+                              "games": [{"id": "jogo", "title": "Jogo", "rom": {"file_id": "x", "filename": "jogo.gba"}}]}]}
+        emu = catalog.parse(raw).emulators[0]
+        cmd = launcher.build_command(emu, emu.games[0], Path("C:/x y/jogo.ss1"))
+        self.assertEqual(cmd[1], "-t")
+        self.assertEqual(cmd[2], str(Path("C:/x y/jogo.ss1")))
+        self.assertTrue(cmd[3].endswith("jogo.gba"))
+        self.assertEqual(len(launcher.build_command(emu, emu.games[0])), 2)   # sem state: só a ROM
+
+    def test_state_args_sem_marcador_e_rejeitado(self):
+        raw = {"emulators": [{"id": "f", "name": "F", "executable": "f.bat", "args": ["{rom}"], "state_args": ["{rom}"],
+                              "games": []}]}
+        with self.assertRaises(catalog.CatalogError):
+            catalog.parse(raw)
+
     def test_abre_com_argumentos_e_pasta_do_emulador(self):
         emu, game = make_catalog(["-f", "{rom}"])
         self._install(emu, game)

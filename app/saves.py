@@ -89,6 +89,48 @@ def save_info(emu: Emulator, game: Game) -> dict:
     return {"exists": True, "blank": is_blank(path), "size": st.st_size, "modified": st.st_mtime}
 
 
+# ---------- save states ----------
+# Save states (o "salvar" do emulador, não o do jogo) não entram nos backups: só são listados para
+# o usuário escolher um e jogar a partir dele.
+
+@dataclass
+class SaveState:
+    name: str        # nome do arquivo, ex.: firered.ss1
+    path: Path
+    modified: float  # quando foi salvo (hora de modificação do arquivo)
+    size: int
+    slot: str        # parte depois do ponto, ex.: "ss1"
+
+
+def list_states(emu: Emulator, game: Game) -> list[SaveState]:
+    """Save states do jogo, do mais recente para o mais antigo."""
+    stem = Path(game.rom_filename).stem
+    found: list[SaveState] = []
+    for ext in emu.state_extensions:
+        f = downloader.game_dir(game) / (stem + ext)
+        if f.is_file():
+            st = f.stat()
+            found.append(SaveState(f.name, f, st.st_mtime, st.st_size, ext.lstrip(".")))
+    return sorted(found, key=lambda s: s.modified, reverse=True)
+
+
+def find_state(emu: Emulator, game: Game, name: str) -> SaveState:
+    # só aceita nomes da listagem: impede caminhos como "..\..\algo"
+    for s in list_states(emu, game):
+        if s.name == name:
+            return s
+    raise SaveError("Esse save state não existe mais.")
+
+
+def delete_state(emu: Emulator, game: Game, name: str) -> None:
+    """Apaga um save state da lista (a interface pede confirmação antes)."""
+    state = find_state(emu, game, name)
+    try:
+        state.path.unlink()
+    except OSError as exc:
+        raise SaveError(f"Não consegui apagar o save state: {exc.strerror or exc}") from exc
+
+
 # ---------- backups ----------
 
 def backups_dir(game: Game) -> Path:

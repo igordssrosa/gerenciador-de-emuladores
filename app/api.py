@@ -190,10 +190,14 @@ class Api:
 
     # ---------- jogar ----------
 
-    def play(self, game_id: str) -> dict:
-        """Backup do save, abre o jogo no emulador e acompanha em uma thread até ele fechar."""
+    def play(self, game_id: str, state: str | None = None) -> dict:
+        """Backup do save, abre o jogo no emulador e acompanha em uma thread até ele fechar.
+        Com `state` (nome de um save state da lista), o emulador já abre carregando esse state."""
         try:
             emu, game = self._find(game_id)
+            state_path = saves.find_state(emu, game, state).path if state else None
+            if state_path and not emu.state_args:
+                return {"error": f"O catálogo não diz como abrir um save state no {emu.name}."}
             if game_id in self._running:
                 return {"error": f"{game.title} já está aberto."}
             warning = None
@@ -204,9 +208,9 @@ class Api:
             with self._lock:
                 if game_id in self._running:
                     return {"error": f"{game.title} já está aberto."}
-                proc = launcher.launch(emu, game)
+                proc = launcher.launch(emu, game, state_path)
                 self._running.add(game_id)
-        except (catalog.CatalogError, launcher.LaunchError) as exc:
+        except (catalog.CatalogError, launcher.LaunchError, saves.SaveError) as exc:
             return {"error": str(exc)}
         threading.Thread(target=self._watch, args=(emu, game, proc), daemon=True).start()
         return {"ok": True, "warning": warning} if warning else {"ok": True}
@@ -256,11 +260,16 @@ class Api:
                          "has_rom": downloader.rom_path(game).is_file()},
                 "emulator": {"id": emu.id, "name": emu.name},
                 "save": saves.save_info(emu, game),
-                "backups": [{"name": b.name, "created": b.created, "size": b.size, "auto": b.auto,
-                             "reason": saves.REASONS[b.reason]} for b in saves.list_backups(game)],
+                "states": [{"name": s.name, "slot": s.slot, "modified": s.modified, "size": s.size}
+                           for s in saves.list_states(emu, game)],
+                "can_play_state": bool(emu.state_args),
                 "running": game.id in self._running,
             }
         return self._saves_action(game_id, action)
+
+    def delete_state(self, game_id: str, name: str) -> dict:
+        """Apaga um save state (a interface confirma antes). Com o jogo aberto não, o emulador pode regravá-lo."""
+        return self._saves_action(game_id, lambda emu, game: saves.delete_state(emu, game, name), needs_closed=True)
 
     def backup_save(self, game_id: str) -> dict:
         def action(emu, game):

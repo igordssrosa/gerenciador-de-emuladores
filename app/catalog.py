@@ -45,6 +45,10 @@ class Emulator:
     setup_files: dict[str, str] = field(default_factory=dict)
     # "default" = janela normal do emulador; "borderless" = janela sem título e sem bordas, do mesmo tamanho, centralizada.
     window_mode: str = "default"
+    # Save states do emulador (arquivos ao lado da ROM, ex.: [".ss1", ".ss2"]) e a linha de comando que abre
+    # o jogo já carregando um deles (ex.: ["-t", "{state}", "{rom}"]). Opcionais: sem eles não há lista de states.
+    state_extensions: list[str] = field(default_factory=list)
+    state_args: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -143,8 +147,16 @@ def parse(raw: dict) -> Catalog:
             games=games,
             setup_files=_check_setup_files(e.get("setup_files", {}), where),
             window_mode=_check_window_mode(e.get("window_mode", "default"), where),
+            state_extensions=[x.lower() for x in e.get("state_extensions", [])],
+            state_args=_check_state_args(list(e.get("state_args", [])), where),
         ))
     return Catalog(version=int(raw.get("version", 1)), emulators=emulators)
+
+
+def _check_state_args(args: list[str], where: str) -> list[str]:
+    if args and not any("{state}" in a for a in args):
+        raise CatalogError(f"Os state_args do {where} precisam ter o marcador {{state}}.")
+    return args
 
 
 def _read(path: Path) -> Catalog:
