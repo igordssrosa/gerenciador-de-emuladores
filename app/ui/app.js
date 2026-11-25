@@ -111,8 +111,11 @@ function pumpCovers() {
     const { gameId, resolve } = coverQueue.shift();
     coverActive++;
     api().get_cover(gameId)
-      .then((url) => resolve(url || null))
-      .catch(() => resolve(null))
+      .then((url) => {
+        if (!url) coverCache.delete(gameId);   // falhou: deixa tentar de novo na próxima vez
+        resolve(url || null);
+      })
+      .catch(() => { coverCache.delete(gameId); resolve(null); })
       .finally(() => { coverActive--; pumpCovers(); });
   }
 }

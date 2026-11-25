@@ -107,7 +107,8 @@ class Api:
         try:
             _, game = self._find(game_id)
             return self._data_url(downloader.ensure_cover(game))
-        except (catalog.CatalogError, OSError):
+        except Exception as exc:  # qualquer falha vira "sem capa", mas fica anotada no log
+            downloader._log_image_error(game_id, exc)
             return None
 
     def get_emulator_icon(self, emulator_id: str) -> str | None:

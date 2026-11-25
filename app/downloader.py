@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import threading
 import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -225,6 +226,15 @@ def _image_extension(path: Path) -> str:
     raise DownloadError("O arquivo da capa não é uma imagem reconhecida.")
 
 
+def _log_image_error(name: str, exc: BaseException) -> None:
+    """Anota em erros.log por que uma capa/ícone falhou (antes o erro sumia em silêncio)."""
+    try:
+        with (paths.DATA_DIR / "erros.log").open("a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} imagem '{name}': {exc!r}\n")
+    except OSError:
+        pass
+
+
 def _ensure_image(file_id: str, folder: Path, stem: str, cancel: threading.Event | None) -> Path | None:
     """Baixa uma imagem opcional (capa/ícone) para folder/<stem>.<ext>. Sem ID ou com erro: None."""
     for existing in folder.glob(f"{stem}.[!d]*"):  # [!d] ignora o temporário "<stem>.download"
@@ -237,7 +247,8 @@ def _ensure_image(file_id: str, folder: Path, stem: str, cancel: threading.Event
         final = tmp.with_name(stem + _image_extension(tmp))
         tmp.replace(final)
         return final
-    except DownloadError:
+    except DownloadError as exc:
+        _log_image_error(stem, exc)
         return None
     finally:
         tmp.unlink(missing_ok=True)
