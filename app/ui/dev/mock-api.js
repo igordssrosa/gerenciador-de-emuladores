@@ -42,6 +42,7 @@
   const playing = new Set();
   window.pywebview = { api: {
     get_library: async () => ({ emulators: [{ id: "mgba", name: "mGBA", platform: "Game Boy Advance", installed, games }] }),
+    check_update: async () => ({ available: params.has("upd"), version: "1.1.6", url: "", can_install: true }),   // ?upd mostra o botão de versão nova
     get_cover: async (id) => { await new Promise((r) => setTimeout(r, 150)); return coverFor(id); },
     get_emulator_icon: async () => null,
     start_download: async (id) => { live[id] = { t0: Date.now() }; return { ok: true }; },
