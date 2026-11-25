@@ -7,6 +7,9 @@ Regras desta camada:
 """
 import base64
 import mimetypes
+import os
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -30,6 +33,8 @@ class Api:
         self._play_errors: dict[str, str] = {}  # jogos que fecharam logo ao abrir (entregue uma vez)
         self._catalog: catalog.Catalog | None = None
         self._catalog_error = ""
+        self._update_info: dict = {}           # última release achada por check_update()
+        self._update = {"state": "idle"}        # andamento da atualização: idle | downloading | installing | error
         self._reload_catalog()
 
     # ---------- catálogo ----------
@@ -79,8 +84,48 @@ class Api:
         return {"ok": True}
 
     def check_update(self) -> dict:
-        """Pergunta ao GitHub se há versão nova (a interface mostra um aviso no topo)."""
-        return updates.check()
+        """Pergunta ao GitHub se há versão nova (a interface mostra um aviso no topo).
+        'can_install' diz se dá para atualizar de dentro do app (só no .exe instalado, não rodando pelo código)."""
+        info = updates.check()
+        self._update_info = info
+        return {k: v for k, v in info.items() if not k.startswith("asset_")} | {
+            "can_install": bool(info.get("asset_url")) and bool(getattr(sys, "frozen", False))}
+
+    def install_update(self) -> dict:
+        """Baixa o instalador da versão nova (numa thread), abre-o e fecha o app. Acompanhe com get_update_status().
+        O endereço vem do que o próprio Python achou no GitHub, nunca de texto vindo da interface."""
+        info = self._update_info
+        if not (info.get("asset_url") and getattr(sys, "frozen", False)):
+            return {"error": "Não dá para atualizar por aqui. Baixe a versão nova na página da release."}
+        with self._lock:
+            if self._running:   # o app fecha ao atualizar e não conseguiria fazer o backup do save depois de jogar
+                return {"error": "Feche o jogo aberto no emulador antes de atualizar."}
+            if self._update["state"] in ("downloading", "installing"):
+                return {"ok": True}
+            self._update = {"state": "downloading", "done": 0, "total": info["asset_size"]}
+        threading.Thread(target=self._run_update, args=(dict(info),), daemon=True).start()
+        return {"ok": True}
+
+    def get_update_status(self) -> dict:
+        with self._lock:
+            return dict(self._update)
+
+    def _run_update(self, info: dict) -> None:
+        def progress(done: int, total: int) -> None:
+            with self._lock:
+                self._update.update(done=done, total=total)
+        try:
+            installer = updates.download_installer(info["asset_url"], info["asset_name"], info["asset_size"], progress)
+            with self._lock:
+                self._update = {"state": "installing"}
+            # /SILENT: o instalador roda sem perguntas, instala por cima e reabre o app no fim.
+            subprocess.Popen([str(installer), "/SILENT"], close_fds=True)
+        except (updates.UpdateError, OSError) as exc:
+            with self._lock:
+                self._update = {"state": "error", "error": str(exc) or "Não consegui instalar a atualização."}
+            return
+        time.sleep(1.5)   # dá tempo da interface mostrar "Instalando…" antes de o app fechar
+        os._exit(0)       # o instalador precisa trocar o .exe, então o app tem de estar fechado
 
     @staticmethod
     def open_url(url: str) -> dict:

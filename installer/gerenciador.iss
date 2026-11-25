@@ -5,6 +5,9 @@
 #define AppExe "GerenciadorEmuladores.exe"
 
 [Setup]
+; Atualização pelo próprio app: se o app ainda estiver aberto, o instalador fecha antes de trocar o .exe.
+CloseApplications=yes
+RestartApplications=no
 AppId={{7D6B6F0E-3C1A-4B0E-9A55-5C0DE0A1B2C3}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -35,7 +38,7 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Abrir o {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "Abrir o {#AppName}"; Flags: nowait postinstall
 
 ; Desinstalar remove só o programa. Jogos, emuladores e saves ficam em %LOCALAPPDATA%\GerenciadorEmuladores
 ; de propósito, para ninguém perder um save sem querer.

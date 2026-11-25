@@ -722,10 +722,43 @@ async function checkUpdate() {
     const info = await api().check_update();
     if (!info.available) return;
     const btn = $("#update");
-    $("#update-label").textContent = `Nova versão ${info.version}`;
+    const label = $("#update-label");
+    label.textContent = `Nova versão ${info.version}`;
     btn.hidden = false;
-    btn.addEventListener("click", () => api().open_url(info.url));
+    btn.addEventListener("click", () => {
+      if (info.can_install) installUpdate(info, btn, label);
+      else api().open_url(info.url);   // rodando pelo código (sem instalador): abre a página da release
+    });
   } catch (e) { /* sem internet: ignora */ }
+}
+
+/** Atualiza de dentro do app: confirma, baixa o instalador (progresso no botão) e o Python fecha o app. */
+async function installUpdate(info, btn, label) {
+  const ok = await confirmDialog({
+    title: `Atualizar para a versão ${info.version}?`,
+    body: "O app baixa a atualização, fecha, instala e abre de novo sozinho. "
+      + "Seus jogos, saves e save states não são mexidos.",
+    confirm: "Atualizar",
+  });
+  if (!ok) return;
+  const start = await api().install_update();
+  if (start.error) return toast(start.error);
+  btn.disabled = true;
+  const idle = `Nova versão ${info.version}`;
+  for (;;) {   // acompanha até o Python fechar o app (a janela some) ou dar erro
+    await new Promise((r) => setTimeout(r, 400));
+    let s;
+    try { s = await api().get_update_status(); } catch (e) { return; }   // app fechou: atualização em andamento
+    if (s.state === "downloading") {
+      label.textContent = s.total ? `Baixando… ${Math.min(99, Math.floor(100 * s.done / s.total))}%` : "Baixando…";
+    } else if (s.state === "installing") {
+      label.textContent = "Instalando…";
+    } else if (s.state === "error") {
+      label.textContent = idle;
+      btn.disabled = false;
+      return toast(`${s.error} Dá para baixar a versão nova na página da release.`);
+    }
+  }
 }
 
 /** Ao abrir, baixa o catálogo do Drive em segundo plano. Sem isso, uma instalação nova ficaria com o
