@@ -770,6 +770,18 @@ async function checkUpdate() {
   } catch (e) { /* sem internet: ignora */ }
 }
 
+/** Ao abrir, baixa o catálogo do Drive em segundo plano. Sem isso, uma instalação nova ficaria com o
+ *  catálogo de reserva (IDs vazios) até alguém clicar em "Atualizar catálogo". Sem internet: segue com o cache. */
+async function refreshCatalogOnStart() {
+  try {
+    const res = await api().refresh_catalog();
+    if (res.error) return;
+    coverCache = new Map();   // as capas anteriores vieram de um catálogo sem IDs
+    await loadLibrary();
+    render();
+  } catch (e) { /* sem internet: ignora */ }
+}
+
 (async function init() {
   await whenReady();
   await loadLibrary();
@@ -782,5 +794,6 @@ async function checkUpdate() {
   if (window.__mockJobs) window.__mockJobs(jobs);  // idem: simula um download em andamento
   render();
   checkUpdate();
+  if (!params.has("mock")) refreshCatalogOnStart();
   if (window.__mockReady) window.__mockReady();  // idem: abre uma confirmação para eu ver o visual
 })();
