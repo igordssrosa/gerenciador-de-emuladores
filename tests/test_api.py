@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from app import paths
-from app.api import Api
+from app.api import Api, clean_pyinstaller_env
 
 GAME = "pokemon-firered-ptbr"   # existe no catalog.json do projeto
 
@@ -56,3 +56,13 @@ class DeleteGameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PyInstallerEnvTests(unittest.TestCase):
+    def test_remove_variaveis_do_pyinstaller_e_mantem_o_resto(self):
+        env = {"PATH": "x", "_PYI_APPLICATION_HOME_DIR": "C:/t/_MEI1", "_PYI_ARCHIVE_FILE": "a", "_MEIPASS2": "b", "TEMP": "t"}
+        clean = clean_pyinstaller_env(env)
+        self.assertEqual(clean["PATH"], "x")
+        self.assertEqual(clean["TEMP"], "t")
+        self.assertFalse(any(k.startswith(("_PYI", "_MEIPASS")) for k in clean))
+        self.assertEqual(clean["PYINSTALLER_RESET_ENVIRONMENT"], "1")

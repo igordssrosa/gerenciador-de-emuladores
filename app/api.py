@@ -23,6 +23,15 @@ _EXTRACT_SHARE = 0.05  # extrair
 # o resto (0.60) é a ROM; se o emulador já existe, a ROM ocupa a barra toda.
 
 
+def clean_pyinstaller_env(env) -> dict:
+    """Cópia do ambiente sem as variáveis internas do PyInstaller.
+    Sem isso o app novo, aberto pelo instalador, herda as do app antigo, acha que deve usar a pasta temporária
+    dele (já apagada) e falha com "Failed to load Python DLL / não foi possível encontrar o módulo"."""
+    clean = {k: v for k, v in env.items() if not (k.startswith("_PYI") or k.startswith("_MEIPASS"))}
+    clean["PYINSTALLER_RESET_ENVIRONMENT"] = "1"   # o carregador do app novo trata a abertura como nova
+    return clean
+
+
 class Api:
     def __init__(self) -> None:
         self._lock = threading.Lock()          # protege _jobs
@@ -118,14 +127,42 @@ class Api:
             installer = updates.download_installer(info["asset_url"], info["asset_name"], progress)
             with self._lock:
                 self._update = {"state": "installing"}
-            # /SILENT: o instalador roda sem perguntas, instala por cima e reabre o app no fim.
-            subprocess.Popen([str(installer), "/SILENT"], close_fds=True)
+            self._start_installer_after_exit(installer)
         except (updates.UpdateError, OSError) as exc:
             with self._lock:
                 self._update = {"state": "error", "error": str(exc) or "Não consegui instalar a atualização."}
             return
         time.sleep(1.5)   # dá tempo da interface mostrar "Instalando…" antes de o app fechar
-        os._exit(0)       # o instalador precisa trocar o .exe, então o app tem de estar fechado
+        self._quit_app()
+
+    @staticmethod
+    def _start_installer_after_exit(installer: Path) -> None:
+        """Deixa um PowerShell escondido esperando o app sair de vez e só então abre o instalador.
+        O instalador precisa trocar o .exe; se rodasse já, ainda o encontraria em uso e desistiria.
+        No .exe de arquivo único há dois processos (o carregador e o app): esperamos pelos dois."""
+        pids = {os.getpid(), os.getppid()}
+        quoted = str(installer).replace("'", "''")
+        script = (f"Wait-Process -Id {','.join(map(str, sorted(pids)))} -Timeout 30 -ErrorAction SilentlyContinue; "
+                  # /SILENT: sem perguntas, instala por cima e reabre o app no fim.
+                  f"Start-Process -FilePath '{quoted}' -ArgumentList '/SILENT'")
+        # sem DETACHED_PROCESS: com ele o PowerShell escondido sai na hora sem fazer nada
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                         creationflags=flags, close_fds=True, env=clean_pyinstaller_env(os.environ))
+
+    @staticmethod
+    def _quit_app() -> None:
+        """Fecha o app do jeito normal (fechar a janela). os._exit deixava o carregador do .exe vivo, segurando o arquivo."""
+        try:
+            import webview
+            for window in list(webview.windows):
+                window.destroy()
+        except Exception:
+            pass
+        time.sleep(8)   # ainda aqui: algo travou o fechamento normal, então encerra à força
+        if getattr(sys, "frozen", False):   # tira também o carregador (processo pai do .exe de arquivo único)
+            subprocess.run(["taskkill", "/F", "/PID", str(os.getppid())], capture_output=True)
+        os._exit(0)
 
     @staticmethod
     def open_url(url: str) -> dict:
