@@ -60,7 +60,7 @@ def selftest() -> None:
 
     def ui_files():
         ui = paths.resource_dir() / "app" / "ui"
-        missing = [f for f in ("index.html", "style.css", "app.js", "fonts/bricolage.woff2") if not (ui / f).is_file()]
+        missing = [f for f in ("index.html", "style.css", "app.js", "fonts/space-grotesk.woff2") if not (ui / f).is_file()]
         assert not missing, f"faltando {missing}"
         if getattr(sys, "frozen", False):  # só no .exe: a pasta dev/ (simulador) não deve ir no pacote
             assert not (ui / "dev").exists(), "a pasta dev/ não deveria ir no pacote"

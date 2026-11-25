@@ -26,6 +26,16 @@ const fmtKB = (bytes) => `${Math.max(1, Math.round(bytes / 1024))} KB`;
 const fmtDate = (seconds) => new Date(seconds * 1000).toLocaleString("pt-BR",
   { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+/** "há 5 h", "ontem", "há 3 dias": tempo relativo para a linha do tempo de backups. */
+function fmtAgo(seconds) {
+  const diff = Math.max(0, Date.now() / 1000 - seconds);
+  const min = Math.floor(diff / 60), hr = Math.floor(diff / 3600), day = Math.floor(diff / 86400);
+  if (min < 1) return "agora há pouco";
+  if (hr < 1) return `há ${min} min`;
+  if (day < 1) return `há ${hr} h`;
+  return day === 1 ? "ontem" : `há ${day} dias`;
+}
+
 /** Cor estável por título, para o espaço reservado de capas que ainda não chegaram. */
 function hue(text) {
   let n = 0;
@@ -34,12 +44,13 @@ function hue(text) {
 }
 
 // Silhueta de um portátil, usada quando o emulador não tem ícone no catálogo (constante, sem dados externos).
-const GLYPH = `<svg viewBox="0 0 120 72" fill="none" stroke="currentColor" stroke-width="3.5"
+// Traço fino (non-scaling-stroke mantém a espessura igual em qualquer tamanho).
+const GLYPH = `<svg viewBox="0 0 48 32" fill="none" stroke="currentColor" stroke-width="1.5"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-  <rect x="3" y="4" width="114" height="64" rx="16"/>
-  <rect x="31" y="15" width="58" height="40" rx="5"/>
-  <path d="M16 29v14M9 36h14"/>
-  <circle cx="104" cy="31" r="4.5"/><circle cx="95" cy="42" r="4.5"/>
+  <rect x="2" y="3" width="44" height="26" rx="9" vector-effect="non-scaling-stroke"/>
+  <path d="M14 11v10M9 16h10" vector-effect="non-scaling-stroke"/>
+  <circle cx="33" cy="13.5" r="2" vector-effect="non-scaling-stroke"/>
+  <circle cx="38" cy="19" r="2" vector-effect="non-scaling-stroke"/>
 </svg>`;
 
 function glyphNode(iconUrl) {
@@ -117,6 +128,8 @@ function toast(message, kind = "error") {
 // ---------- navegação ----------
 
 async function go(view, emuId = null, gameId = null) {
+  // ao entrar em outro emulador, os filtros da biblioteca voltam ao padrão
+  if (view === "emulator" && route.emuId !== emuId) { filters.status = "all"; filters.query = ""; }
   route = { view, emuId, gameId };
   if (view === "saves") await loadSaves();
   render();
@@ -124,7 +137,7 @@ async function go(view, emuId = null, gameId = null) {
   window.scrollTo(0, 0);
 }
 
-/** Voltar um nível: saves -> jogos do emulador -> tela inicial. */
+/** Voltar um nível: saves -> jogos do emulador -> início. */
 function goBack() {
   if (route.view === "saves") go("emulator", route.emuId);
   else if (route.view === "emulator") go("home");
@@ -153,16 +166,42 @@ async function reloadSaves() {
 function render() {
   tiles.clear();
   const view = $("#view");
-  $("#back").hidden = route.view === "home";
-  $("#brand").hidden = route.view !== "home";
-
+  const emu = route.view !== "home" && lib && !lib.error && findEmu(route.emuId);
+  if (lib && !lib.error) {
+    if (route.view !== "home" && !emu) route = { view: "home", emuId: null, gameId: null };
+    if (route.view === "saves" && !savesData) route = { view: "emulator", emuId: route.emuId, gameId: null };
+  }
+  renderChrome(route.view === "home" ? null : emu);
   if (!lib || lib.error) return view.replaceChildren(renderCatalogError());
-  const emu = route.view !== "home" && findEmu(route.emuId);
-  if (route.view !== "home" && !emu) route = { view: "home", emuId: null, gameId: null };
-  if (route.view === "saves" && !savesData) route = { view: "emulator", emuId: route.emuId, gameId: null };
-  $("#back-label").textContent = route.view === "saves" ? emu.name : "Emuladores";
   view.replaceChildren(route.view === "saves" ? renderSaves(emu)
     : route.view === "emulator" ? renderEmulator(emu) : renderHome());
+}
+
+/** Menu lateral (emuladores) e trilha de navegação no alto. */
+const emuIcons = new Map();   // emulador -> url do ícone próprio (ou null), para não pedir de novo
+
+function renderChrome(emu) {
+  const emus = (lib && !lib.error && lib.emulators) || [];
+  $("#nav-home").setAttribute("aria-current", route.view === "home" ? "page" : "false");
+  $("#nav-emus").replaceChildren(...emus.map((e) => {
+    if (!emuIcons.has(e.id)) {
+      emuIcons.set(e.id, null);
+      api().get_emulator_icon(e.id).then((url) => { if (url) { emuIcons.set(e.id, url); renderChrome(emu); } }).catch(() => {});
+    }
+    return h("button", { class: "nav-item", type: "button", title: e.name,
+      "aria-current": route.view !== "home" && route.emuId === e.id ? "page" : "false", onclick: () => go("emulator", e.id) },
+      glyphNode(emuIcons.get(e.id)), h("span", { class: "nav-label" }, e.name), h("span", { class: "nav-count" }, String(e.games.length)));
+  }));
+
+  const sep = () => h("span", { class: "sep", "aria-hidden": "true" }, "/");
+  const now = (text) => h("span", { class: "crumb now", "aria-current": "page" }, text);
+  const link = (text, onclick) => h("button", { class: "crumb", type: "button", onclick }, text);
+  const parts = [route.view === "home" ? now("Início") : link("Início", () => go("home"))];
+  if (emu) {
+    parts.push(sep(), route.view === "emulator" ? now(emu.name) : link(emu.name, () => go("emulator", emu.id)));
+    if (route.view === "saves" && savesData) parts.push(sep(), now(savesData.game.title));
+  }
+  $("#crumbs").replaceChildren(...parts);
 }
 
 function renderCatalogError() {
@@ -172,116 +211,179 @@ function renderCatalogError() {
     h("button", { class: "btn btn-get", onclick: onRefresh }, "Atualizar catálogo"));
 }
 
-// ---------- tela inicial ----------
+// ---------- preferências simples (guardadas neste computador) ----------
+
+function loadPref(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+}
+function savePref(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { /* sem armazenamento: vale só nesta sessão */ }
+}
+
+/** Ícone fixo (SVG do próprio código, sem dados externos). */
+function icon(svg) {
+  const el = h("span", { class: "icon", "aria-hidden": "true" });
+  el.innerHTML = svg;
+  return el;
+}
+const svgWrap = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+const ICON_GRID = svgWrap('<rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/>');
+const ICON_LIST = svgWrap('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>');
+
+const pageHead = (title, sub) => h("header", { class: "page-head" },
+  h("div", {}, h("h1", {}, title), sub && h("p", { class: "sub-head" }, sub)));
+
+// ---------- início: resumo e um bloco por emulador ----------
 
 function renderHome() {
-  const section = h("section", { class: "home" }, h("h1", {}, "Seus emuladores"));
+  const section = h("section", { class: "home" }, pageHead("Início", "Seus emuladores e jogos."));
   if (!lib.emulators.length) {
     section.append(h("p", { class: "empty" },
       "O catálogo ainda não tem emuladores. Adicione um no catalog.json do Drive e use Atualizar catálogo."));
     return section;
   }
-  const grid = h("div", { class: "emu-grid" });
-  for (const emu of lib.emulators) grid.append(emuPanel(emu));
-  section.append(grid);
+  const total = lib.emulators.reduce((n, e) => n + e.games.length, 0);
+  const ready = lib.emulators.reduce((n, e) => n + e.games.filter((g) => e.installed && g.has_rom).length, 0);
+  const stat = (n, label) => h("div", { class: "block stat" }, h("strong", {}, String(n)), h("span", {}, label));
+  section.append(
+    h("div", { class: "stats" }, stat(lib.emulators.length, "Emuladores"), stat(total, "Jogos no catálogo"), stat(ready, "Prontos para jogar")),
+    h("h2", { class: "section-title" }, "Seus emuladores"),
+    h("div", { class: "emu-grid" }, ...lib.emulators.map(emuCard)));
   return section;
 }
 
-function emuPanel(emu) {
-  const glyph = glyphNode(null);
-  api().get_emulator_icon(emu.id).then((url) => { if (url) glyph.replaceWith(glyphNode(url)); }).catch(() => {});
-
-  const fan = h("div", { class: "fan", "aria-hidden": "true" });
-  emu.games.slice(0, 3).forEach((g, i) => {
-    loadCover(g.id).then((url) => {
-      if (url) fan.append(h("img", { src: url, alt: "", style: `--r:${(i - 1) * 7}deg` }));
-    });
+function emuCard(emu) {
+  const strip = h("div", { class: "strip", "aria-hidden": "true" });
+  emu.games.slice(0, 4).forEach((g) => {
+    const ph = h("div", { class: "mini ph", style: `--hue:${hue(g.title)}` }, g.title);
+    strip.append(ph);
+    loadCover(g.id).then((url) => { if (url) ph.replaceWith(h("img", { class: "mini", src: url, alt: "" })); });
   });
-
   const ready = emu.games.filter((g) => g.has_rom && emu.installed).length;
-  return h("button", { class: "emu-panel", onclick: () => go("emulator", emu.id) },
-    glyph,
-    h("div", {},
-      h("h2", {}, emu.name),
-      h("p", {}, emu.platform),
-      h("p", { class: `state ${emu.installed ? "" : "off"}` },
-        `${plural(emu.games.length, "jogo", "jogos")}, ${plural(ready, "pronto", "prontos")}`)),
-    fan);
+  return h("article", { class: "block emu-card" },
+    h("div", { class: "emu-head" }, glyphNode(emuIcons.get(emu.id)),
+      h("div", {}, h("h3", {}, emu.name), h("p", { class: "muted" }, emu.platform))),
+    strip,
+    h("div", { class: "emu-foot" },
+      h("p", { class: "muted" }, `${plural(emu.games.length, "jogo", "jogos")}, ${plural(ready, "pronto", "prontos")}`),
+      h("button", { class: "btn btn-play", type: "button", "aria-label": `Abrir ${emu.name}`, onclick: () => go("emulator", emu.id) }, "Abrir")));
 }
 
-// ---------- tela de um emulador ----------
+// ---------- biblioteca de um emulador: blocos ou lista ----------
+
+const filters = { status: "all", query: "" };   // valem enquanto você está neste emulador
+let libView = loadPref("libview", "blocks");    // "blocks" ou "list"
+
+const normalize = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 function renderEmulator(emu) {
-  const ready = emu.games.filter((g) => g.has_rom && emu.installed).length;
-  const head = h("header", {},
-    h("div", { class: "shelf-head" },
-      glyphNode(null),
-      h("div", {},
-        h("h1", {}, emu.name),
-        h("p", { class: "sub-head" },
-          `${emu.platform}: ${plural(emu.games.length, "jogo", "jogos")}, ${plural(ready, "pronto", "prontos")}`))));
-  api().get_emulator_icon(emu.id).then((url) => {
-    if (url) head.querySelector(".glyph").replaceWith(glyphNode(url));
-  }).catch(() => {});
-  if (!emu.installed) {
-    head.firstChild.lastChild.append(h("p", { class: "hint" }, `O ${emu.name} é baixado junto com o primeiro jogo.`));
-  }
-
-  const section = h("section", {}, head);
+  const isReady = (g) => emu.installed && g.has_rom;
+  const ready = emu.games.filter(isReady).length;
+  const section = h("section", { class: "emulator" },
+    pageHead(emu.name, `${emu.platform}: ${plural(emu.games.length, "jogo", "jogos")}, ${plural(ready, "pronto", "prontos")}`));
+  if (!emu.installed) section.append(h("p", { class: "hint" }, `O ${emu.name} é baixado junto com o primeiro jogo.`));
   if (!emu.games.length) {
     section.append(h("p", { class: "empty" },
       `Nenhum jogo para ${emu.name} ainda. Suba a ROM no Drive, adicione no catalog.json e use Atualizar catálogo.`));
     return section;
   }
-  const grid = h("div", { class: "games" });
-  emu.games.forEach((g, i) => grid.append(buildTile(emu, g, i)));
-  section.append(grid);
+
+  const host = h("div", { class: "games-host" });
+  const refresh = () => { syncToolbar(); tiles.clear(); host.replaceChildren(buildGames(emu, isReady)); };
+
+  // filtros por estado, com contagem
+  const count = (key) => key === "all" ? emu.games.length : emu.games.filter((g) => (key === "ready") === isReady(g)).length;
+  const tabs = [["all", "Todos"], ["ready", "Prontos"], ["missing", "Não baixados"]].map(([key, label]) => {
+    const el = h("button", { class: "tab", type: "button", onclick: () => { filters.status = key; refresh(); } },
+      label, h("span", { class: "tab-count" }, String(count(key))));
+    el.dataset.key = key;
+    return el;
+  });
+  const search = h("input", { class: "search", type: "search", placeholder: "Buscar jogo", "aria-label": "Buscar jogo",
+    value: filters.query, oninput: (e) => { filters.query = e.target.value; refresh(); } });
+  // alternador blocos / lista
+  const segs = [["blocks", "Ver em blocos", ICON_GRID], ["list", "Ver em lista", ICON_LIST]].map(([mode, label, svg]) => {
+    const el = h("button", { class: "seg", type: "button", title: label, "aria-label": label,
+      onclick: () => { libView = mode; savePref("libview", mode); refresh(); } }, icon(svg));
+    el.dataset.mode = mode;
+    return el;
+  });
+  function syncToolbar() {
+    tabs.forEach((el) => el.setAttribute("aria-pressed", String(el.dataset.key === filters.status)));
+    segs.forEach((el) => el.setAttribute("aria-pressed", String(el.dataset.mode === libView)));
+  }
+
+  section.append(
+    h("div", { class: "toolbar" }, h("div", { class: "tabs", role: "group", "aria-label": "Filtrar jogos" }, ...tabs),
+      search, h("div", { class: "seg-group", role: "group", "aria-label": "Modo de exibição" }, ...segs)),
+    host);
+  refresh();
   return section;
 }
 
-function buildTile(emu, game, index) {
+/** Monta os jogos que passam pelo filtro e pela busca, em blocos ou lista. */
+function buildGames(emu, isReady) {
+  const q = normalize(filters.query.trim());
+  const list = emu.games.filter((g) =>
+    (filters.status === "all" || (filters.status === "ready") === isReady(g))
+    && (!q || normalize(`${g.title} ${g.subtitle || ""}`).includes(q)));
+  if (!list.length) {
+    return h("div", { class: "empty-block" }, h("p", {}, "Nenhum jogo encontrado com esse filtro."),
+      h("button", { class: "btn-small", type: "button", onclick: () => { filters.status = "all"; filters.query = ""; render(); } }, "Limpar filtros"));
+  }
+  const grid = h("div", { class: `games ${libView === "list" ? "is-list" : ""}` });
+  list.forEach((g, i) => grid.append(buildGame(emu, g, i)));
+  return grid;
+}
+
+/** Um jogo: capa, título, estado e ações (sempre visíveis). */
+function buildGame(emu, game, index) {
   const art = h("img", { alt: "", draggable: "false", hidden: true });
-  const glow = h("img", { class: "glow", alt: "", "aria-hidden": "true", hidden: true });
   const placeholder = h("div", { class: "placeholder", style: `--hue:${hue(game.title)}` }, game.title);
-  const zone = h("div", { class: "action-zone" });
+  const badge = h("span", { class: "badge" });
+  const zone = h("div", { class: "zone" });
+  const open = () => go("saves", emu.id, game.id);
 
-  const root = h("article", { class: "game", style: `--i:${Math.min(index, 14)}` },
-    h("div", { class: "cover-wrap" }, glow,
-      h("button", { class: "cover", type: "button", "aria-label": `Saves e backups de ${game.title}`,
-        onclick: () => go("saves", emu.id, game.id) },
-        placeholder, art, h("span", { class: "cover-hint", "aria-hidden": "true" }, "Saves e backups"))),
-    h("div", { class: "meta" },
-      h("h3", { class: "title" },
-        h("button", { class: "title-btn", type: "button", onclick: () => go("saves", emu.id, game.id) }, game.title)),
+  const root = h("article", { class: "game-card", style: `--i:${Math.min(index, 14)}` },
+    h("button", { class: "gc-cover", type: "button", title: "Saves e backups", "aria-label": `Saves e backups de ${game.title}`,
+      onclick: open }, placeholder, art),
+    h("div", { class: "gc-info" },
+      h("h3", { class: "title" }, h("button", { class: "title-btn", type: "button", onclick: open }, game.title)),
       game.subtitle && h("p", { class: "sub" }, game.subtitle)),
-    zone);
+    badge, zone);
 
-  tiles.set(game.id, { root, zone, emuId: emu.id, shown: null });
+  tiles.set(game.id, { root, zone, badge, emuId: emu.id, shown: null });
   loadCover(game.id).then((url) => {
     if (!url) return;
-    art.src = glow.src = url;
-    art.hidden = glow.hidden = false;
+    art.src = url;
+    art.hidden = false;
     placeholder.hidden = true;
   });
   paint(game.id);
   return root;
 }
 
-/** Atualiza um cartão conforme o estado: missing (Baixar), downloading, ready (Jogar) ou error. */
+const STATE_LABEL = { ready: "Pronto", playing: "Jogando", downloading: "Baixando", error: "Erro", missing: "Não baixado" };
+
+/** Estado de um jogo: missing (Baixar), downloading, playing, error ou ready (Jogar). */
+function stateOf(emu, game) {
+  const job = jobs.get(game.id);
+  const ready = emu.installed && game.has_rom;
+  const state = job ? "downloading" : running.has(game.id) ? "playing" : errors.has(game.id) ? "error" : ready ? "ready" : "missing";
+  return { state, job, wake: job ? Math.max(0.05, job.fraction) : ready ? 1 : 0 };   // a capa "acorda" junto com o download
+}
+
+/** Atualiza o bloco do jogo conforme o estado. */
 function paint(gameId) {
   const t = tiles.get(gameId);
   const emu = t && findEmu(t.emuId);
   const game = emu && emu.games.find((g) => g.id === gameId);
   if (!game) return;
 
-  const job = jobs.get(gameId);
-  const ready = emu.installed && game.has_rom;
-  const state = job ? "downloading" : running.has(gameId) ? "playing" : errors.has(gameId) ? "error" : ready ? "ready" : "missing";
-
+  const { state, job, wake } = stateOf(emu, game);
   t.root.dataset.state = state;
-  // a capa "acorda" junto com o download
-  t.root.style.setProperty("--wake", job ? Math.max(0.05, job.fraction) : ready ? 1 : 0);
-
+  t.root.style.setProperty("--wake", wake);
+  t.badge.textContent = STATE_LABEL[state];
   if (t.shown !== state) {
     t.zone.replaceChildren(...zoneFor(state, t, emu, game));
     t.shown = state;
@@ -289,9 +391,15 @@ function paint(gameId) {
   if (state === "downloading") updateProgress(t, emu, job);
 }
 
+/** Botões de cada estado. "Excluir jogo" só existe com o jogo baixado (e sempre pede confirmação). */
 function zoneFor(state, t, emu, game) {
+  const savesBtn = () => h("button", { class: "btn-small", type: "button", onclick: () => go("saves", emu.id, game.id) }, "Saves");
   if (state === "ready") {
-    return [h("button", { class: "btn btn-play", "aria-label": `Jogar ${game.title}`, onclick: () => onPlay(game.id) }, "Jogar")];
+    return [
+      h("button", { class: "btn btn-play", "aria-label": `Jogar ${game.title}`, onclick: () => onPlay(game.id) }, "Jogar"),
+      savesBtn(),
+      h("button", { class: "btn-small danger", type: "button", title: "Apaga a ROM do PC; os saves ficam guardados",
+        "aria-label": `Excluir ${game.title} do PC`, onclick: () => onDeleteGame(game) }, "Excluir jogo")];
   }
   if (state === "playing") {
     return [h("button", { class: "btn btn-playing", disabled: true }, "Jogando"),
@@ -303,11 +411,11 @@ function zoneFor(state, t, emu, game) {
     t.stageEl = h("span");
     t.pctEl = h("span", { class: "pct" });
     t.detailEl = h("div", { class: "detail" });
-    return [t.bar, h("div", { class: "progress-row" }, t.stageEl, t.pctEl), t.detailEl,
-      h("button", { class: "cancel", onclick: () => api().cancel_download(game.id) }, "Cancelar")];
+    return [h("div", { class: "dl" }, t.bar, h("div", { class: "progress-row" }, t.stageEl, t.pctEl), t.detailEl,
+      h("button", { class: "cancel", type: "button", onclick: () => api().cancel_download(game.id) }, "Cancelar"))];
   }
   const label = state === "error" ? "Tentar de novo" : "Baixar";
-  const out = [h("button", { class: "btn btn-get", "aria-label": `${label}: ${game.title}`, onclick: () => onDownload(game.id) }, label)];
+  const out = [h("button", { class: "btn btn-get", "aria-label": `${label}: ${game.title}`, onclick: () => onDownload(game.id) }, label), savesBtn()];
   if (state === "error") out.push(h("p", { class: "error", title: errors.get(game.id) }, errors.get(game.id)));
   return out;
 }
@@ -403,7 +511,7 @@ async function onPlay(gameId) {
 async function onRefresh() {
   const btn = $("#refresh");
   btn.disabled = true;
-  btn.textContent = "Atualizando…";
+  $("#refresh-label").textContent = "Atualizando…";
   try {
     const res = await api().refresh_catalog();
     if (res.error) return toast(res.error);
@@ -415,7 +523,7 @@ async function onRefresh() {
     toast("Não consegui atualizar o catálogo.");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Atualizar catálogo";
+    $("#refresh-label").textContent = "Atualizar catálogo";
   }
 }
 
@@ -426,8 +534,9 @@ function renderSaves(emu) {
   const g = d.game;
   const save = d.save;
   const locked = d.running;   // com o jogo aberto, nada que troque ou apague o save
+  const lockedWhy = locked ? "Feche o jogo no emulador primeiro." : "";
 
-  const cover = h("div", { class: "saves-cover", style: `--hue:${hue(g.title)}` });
+  const cover = h("div", { class: "detail-cover", style: `--hue:${hue(g.title)}` });
   loadCover(g.id).then((url) => { if (url) cover.replaceChildren(h("img", { src: url, alt: "" })); });
 
   const playButton = locked
@@ -435,60 +544,73 @@ function renderSaves(emu) {
     : g.ready
       ? h("button", { class: "btn btn-play", onclick: () => onPlay(g.id) }, "Jogar")
       : h("button", { class: "btn btn-get", onclick: () => { onDownload(g.id); go("emulator", emu.id); } },
-        "Baixar o jogo");   // começa o download e leva para a grade, onde o progresso aparece
+        "Baixar o jogo");   // começa o download e leva para a biblioteca, onde o progresso aparece
 
-  const head = h("header", { class: "saves-head" },
+  const head = h("header", { class: "block detail-head" },
     cover,
     h("div", {},
-      h("h1", { class: "saves-title" }, g.title),
+      h("h1", {}, g.title),
       g.subtitle && h("p", { class: "sub-head" }, g.subtitle),
-      h("div", { class: "saves-play" }, playButton,
-        // só aparece se a ROM está no PC; bloqueado com o jogo aberto
-        g.has_rom && h("button", { class: "btn-small danger", type: "button", disabled: locked,
-          title: locked ? "Feche o jogo no emulador primeiro." : null, onclick: onDeleteGame }, "Excluir jogo"))));
+      h("span", { class: `badge ${locked ? "is-playing" : g.ready ? "is-ready" : ""}` },
+        locked ? "Jogando" : g.ready ? "Pronto" : "Não baixado")),
+    h("div", { class: "detail-actions" }, playButton));
 
   const status = !save.exists
     ? "Ainda sem save. Jogue e salve dentro do jogo, ou importe um arquivo .sav."
     : save.blank
-      ? "Save vazio: o jogo ainda não salvou nada."
+      ? "O jogo ainda não salvou nada."
       : `Salvo em ${fmtDate(save.modified)}, ${fmtKB(save.size)}.`;
+  const big = !save.exists ? "Sem save" : save.blank ? "Save vazio" : fmtAgo(save.modified);
 
   const tool = (label, handler, { disabled = false, why = "", danger = false } = {}) =>
     h("button", { class: `btn-small ${danger ? "danger" : ""}`, type: "button", disabled, title: why || null,
       onclick: handler }, label);
-  const lockedWhy = locked ? "Feche o jogo no emulador primeiro." : "";
 
-  const current = h("section", { class: "saves-block" },
+  const current = h("section", { class: "block" },
     h("h2", {}, "Save atual"),
+    h("p", { class: "save-big" }, big),
     h("p", { class: "save-status" }, status),
     locked && h("p", { class: "hint" }, "O jogo está aberto. Feche o emulador para restaurar, importar ou apagar saves."),
     h("div", { class: "tools" },
       tool("Fazer backup agora", onBackup, { disabled: !save.exists || save.blank, why: "Não há progresso para guardar." }),
       tool("Exportar .sav", onExport, { disabled: !save.exists, why: "Ainda não há save." }),
-      tool("Importar .sav", onImport, { disabled: locked, why: lockedWhy }),
-      tool("Apagar save", onDeleteSave, { disabled: !save.exists || locked, why: lockedWhy || "Ainda não há save.", danger: true })));
+      tool("Importar .sav", onImport, { disabled: locked, why: lockedWhy })));
 
-  const list = h("ul", { class: "backups" });
+  const list = h("ul", { class: "rows" });
   for (const b of d.backups) {
-    list.append(h("li", { class: "backup" },
-      h("div", { class: "b-main" },
-        h("strong", {}, fmtDate(b.created)),
-        h("span", { class: "b-meta" }, `${b.reason}, ${fmtKB(b.size)}`)),
-      h("div", { class: "b-actions" },
+    list.append(h("li", { class: "row" },
+      h("div", { class: "row-main" },
+        h("strong", {}, fmtAgo(b.created)),
+        h("span", { class: "row-meta" }, `${fmtDate(b.created)}, ${b.reason}, ${fmtKB(b.size)}`)),
+      h("div", { class: "row-actions" },
         h("button", { class: "btn-small play", type: "button", disabled: locked || !g.ready,
           title: !g.ready ? "Baixe o jogo primeiro." : lockedWhy || null, onclick: () => onRestore(b, true) }, "Carregar e jogar"),
         tool("Restaurar", () => onRestore(b, false), { disabled: locked, why: lockedWhy }),
         tool("Apagar", () => onDeleteBackup(b), { danger: true }))));
   }
-
-  const backups = h("section", { class: "saves-block" },
+  const backups = h("section", { class: "block" },
     h("h2", {}, d.backups.length ? `Backups (${d.backups.length})` : "Backups"),
     d.backups.length
       ? list
       : h("p", { class: "save-status" },
         "Nenhum backup ainda. O app guarda um sozinho antes e depois de cada vez que você joga."));
 
-  return h("section", {}, head, current, backups);
+  // ações que apagam ficam juntas, num bloco só delas
+  const riskRow = (title, text, button) => h("li", { class: "row" },
+    h("div", { class: "row-main" }, h("strong", {}, title), h("span", { class: "row-meta" }, text)), button);
+  const risk = h("section", { class: "block risk" },
+    h("h2", {}, "Zona de risco"),
+    h("ul", { class: "rows" },
+      riskRow("Excluir jogo do PC",
+        "Apaga a ROM para liberar espaço. Seus saves e backups continuam guardados.",
+        tool("Excluir jogo", () => onDeleteGame(g), { danger: true, disabled: locked || !g.has_rom,
+          why: locked ? lockedWhy : !g.has_rom ? "O jogo não está baixado." : "" })),
+      riskRow("Apagar o save atual",
+        "O app guarda um backup antes, e você pode restaurá-lo pela lista.",
+        tool("Apagar save", onDeleteSave, { danger: true, disabled: !save.exists || locked,
+          why: lockedWhy || (!save.exists ? "Ainda não há save." : "") }))));
+
+  return h("section", { class: "saves" }, head, h("div", { class: "detail-grid" }, current, backups), risk);
 }
 
 // ---------- ações dos saves ----------
@@ -561,21 +683,21 @@ async function onDeleteSave() {
   await reloadSaves();
 }
 
-async function onDeleteGame() {
-  const title = savesData.game.title;
+/** Exclui a ROM de um jogo (pede confirmação). Funciona na biblioteca e na tela do jogo. */
+async function onDeleteGame(game) {
   const ok = await confirmDialog({
     title: "Excluir o jogo do PC?",
-    body: `A ROM de ${title} será apagada do seu computador para liberar espaço. `
+    body: `A ROM de ${game.title} será apagada do seu computador para liberar espaço. `
       + "Seus saves e backups continuam guardados: se baixar o jogo de novo, você continua de onde parou. "
       + "Para apagar o save, use Apagar save.",
     confirm: "Excluir jogo", danger: true,
   });
   if (!ok) return;
-  const res = await api().delete_game(route.gameId);
+  const res = await api().delete_game(game.id);
   if (res.error) return toast(res.error);
   toast("Jogo excluído. Dá para baixar de novo quando quiser.", "ok");
-  await loadLibrary();   // a grade passa a mostrar "Baixar" para este jogo
-  await reloadSaves();
+  await loadLibrary();   // a biblioteca passa a mostrar "Baixar" para este jogo
+  if (route.view === "saves") await reloadSaves(); else render();
 }
 
 async function onExport() {
@@ -607,10 +729,29 @@ async function onImport() {
 
 // ---------- início ----------
 
-$("#back").addEventListener("click", goBack);
+// Tema claro/escuro: o script no <head> do index.html define o tema inicial; aqui só trocamos e guardamos.
+function applyTheme(theme, save) {
+  document.documentElement.dataset.theme = theme;
+  $("#theme").setAttribute("aria-label", theme === "dark" ? "Trocar para o tema claro" : "Trocar para o tema escuro");
+  if (save) savePref("theme", theme);
+}
+applyTheme(document.documentElement.dataset.theme || "light", false);
+$("#theme").addEventListener("click", () =>
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+// Enquanto você não escolher um tema, acompanha o do Windows.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+  if (!loadPref("theme", "")) applyTheme(e.matches ? "dark" : "light", false);
+});
+
+$("#nav-home").addEventListener("click", () => go("home"));
 $("#refresh").addEventListener("click", onRefresh);
 document.addEventListener("keydown", (e) => {
   if (document.querySelector("dialog[open]")) return;  // Esc dentro de uma confirmação só fecha ela
+  if (e.target instanceof HTMLElement && e.target.matches("input, textarea")) {
+    // dentro da busca, Backspace apaga letras (não volta de tela) e Esc limpa o texto
+    if (e.key === "Escape" && e.target.value) { e.target.value = ""; e.target.dispatchEvent(new Event("input")); }
+    return;
+  }
   if ((e.key === "Escape" || e.key === "Backspace") && route.view !== "home") goBack();
 });
 
@@ -620,7 +761,7 @@ async function checkUpdate() {
     const info = await api().check_update();
     if (!info.available) return;
     const btn = $("#update");
-    btn.textContent = `Nova versão ${info.version}`;
+    $("#update-label").textContent = `Nova versão ${info.version}`;
     btn.hidden = false;
     btn.addEventListener("click", () => api().open_url(info.url));
   } catch (e) { /* sem internet: ignora */ }
