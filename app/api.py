@@ -102,7 +102,7 @@ class Api:
                 return {"error": "Feche o jogo aberto no emulador antes de atualizar."}
             if self._update["state"] in ("downloading", "installing"):
                 return {"ok": True}
-            self._update = {"state": "downloading", "done": 0, "total": info["asset_size"]}
+            self._update = {"state": "downloading", "done": 0, "total": 0}
         threading.Thread(target=self._run_update, args=(dict(info),), daemon=True).start()
         return {"ok": True}
 
@@ -115,7 +115,7 @@ class Api:
             with self._lock:
                 self._update.update(done=done, total=total)
         try:
-            installer = updates.download_installer(info["asset_url"], info["asset_name"], info["asset_size"], progress)
+            installer = updates.download_installer(info["asset_url"], info["asset_name"], progress)
             with self._lock:
                 self._update = {"state": "installing"}
             # /SILENT: o instalador roda sem perguntas, instala por cima e reabre o app no fim.
