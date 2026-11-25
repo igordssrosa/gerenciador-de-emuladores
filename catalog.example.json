@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "emulators": [
+    {
+      "id": "mgba",
+      "name": "mGBA",
+      "platform": "Game Boy Advance",
+      "icon": { "file_id": "" },
+      "download": { "file_id": "", "type": "zip" },
+      "executable": "mGBA.exe",
+      "setup_files": {
+        "portable.ini": "",
+        "config.ini": "[ports.qt]\nwidth=960\nheight=640\n"
+      },
+      "args": ["{rom}"],
+      "window_mode": "borderless",
+      "rom_extensions": [".gba"],
+      "save_extensions": [".sav"],
+      "games": [
+        {
+          "id": "pokemon-firered-ptbr",
+          "title": "Pokémon FireRed",
+          "subtitle": "PT-BR (English moves)",
+          "rom": { "file_id": "", "filename": "firered.gba" },
+          "cover": { "file_id": "" }
+        },
+        {
+          "id": "pokemon-emerald-ptbr",
+          "title": "Pokémon Emerald",
+          "subtitle": "PT-BR",
+          "rom": { "file_id": "", "filename": "emerald.gba" },
+          "cover": { "file_id": "" }
+        }
+      ]
+    }
+  ]
+}

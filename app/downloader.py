@@ -3,6 +3,7 @@
 Tudo aqui é independente da interface: quem chama passa um `on_progress(stage, done, total)`
 e, opcionalmente, um threading.Event (`cancel`) para interromper.
 """
+import re
 import shutil
 import tempfile
 import threading
@@ -60,6 +61,12 @@ def is_game_ready(emu: Emulator, game: Game) -> bool:
 
 # ---------- download de um arquivo ----------
 
+def scrub(text: str) -> str:
+    """Tira links e IDs do Drive de uma mensagem de erro (o usuário não precisa ver de onde vem)."""
+    text = re.sub(r"https?://\S+", "[link omitido]", text)
+    return re.sub(r"[A-Za-z0-9_-]{25,}", "[id omitido]", text)
+
+
 def friendly_download_error(exc: Exception) -> str:
     """Troca o erro técnico do gdown/rede por uma frase que quem não programa entende."""
     text = str(exc).lower()
@@ -70,7 +77,7 @@ def friendly_download_error(exc: Exception) -> str:
                 "Isso passa sozinho em até 24 horas; tente de novo mais tarde.")
     if any(w in text for w in ("connection", "resolve", "timed out", "timeout", "network", "ssl", "proxy")):
         return "Sem conexão com a internet (ou o Drive está fora do ar). Confira a rede e tente de novo."
-    return f"Não consegui baixar do Drive: {exc}"
+    return f"Não consegui baixar do Drive: {scrub(str(exc))}"
 
 def download_file(file_id: str, dest: Path, on_progress: Callable[[int, "int | None"], None] | None = None,
                   cancel: threading.Event | None = None) -> Path:

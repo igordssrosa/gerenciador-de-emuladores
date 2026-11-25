@@ -23,7 +23,10 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+# catalog.json (com os IDs reais) não vai para o git; num clone limpo cai no catalog.example.json.
 BUNDLED_CATALOG = resource_dir() / "catalog.json"
+if not BUNDLED_CATALOG.exists():
+    BUNDLED_CATALOG = resource_dir() / "catalog.example.json"
 
 
 def ensure_dirs() -> None:

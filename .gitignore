@@ -22,3 +22,7 @@ games/
 backups/
 catalog.cache.json
 settings.json
+
+# IDs do Drive: ficam só na máquina, nunca no repositório público
+catalog.json
+app/_private.py

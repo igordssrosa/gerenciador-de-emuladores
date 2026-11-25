@@ -74,6 +74,14 @@ class DownloaderTests(unittest.TestCase):
             catalog.parse({"emulators": [{"id": "../x", "name": "X", "executable": "x", "args": ["{rom}"]}]})
 
 
+class ErrosSemLinkTest(unittest.TestCase):
+    def test_erro_nao_mostra_link_nem_id_do_drive(self):
+        msg = downloader.friendly_download_error(
+            RuntimeError("falhou https://drive.google.com/uc?id=ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"))
+        self.assertNotIn("drive.google.com", msg)
+        self.assertNotIn("ABCDEFGHIJKLMNOPQRSTUVWXYZ123456", msg)
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -19,7 +19,8 @@ a = Analysis(
     [str(ROOT / "run.py")],
     pathex=[str(ROOT)],
     # catalog.json do projeto vai junto: é o catálogo de reserva quando não há cache nem internet
-    datas=ui_files + [(str(ROOT / "catalog.json"), ".")]
+    # (se não existir, como num clone limpo do git, usa o catalog.example.json)
+    datas=ui_files + [(str(next(f for f in (ROOT / "catalog.json", ROOT / "catalog.example.json") if f.exists())), ".")]
     # o gdown pergunta a própria versão em tempo de execução; sem os metadados ele falha no .exe
     + copy_metadata("gdown"),
     hiddenimports=[],

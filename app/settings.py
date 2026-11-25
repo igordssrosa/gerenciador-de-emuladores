@@ -3,10 +3,13 @@ import json
 
 from .paths import SETTINGS_FILE
 
-# ID do catalog.json no Google Drive. Vazio = ainda não configurado:
-# o app usa o cache local ou o catalog.json que vem junto do projeto.
-# Depois de subir o catálogo no Drive, coloque o ID aqui ou no settings.json.
-DEFAULT_CATALOG_FILE_ID = "REMOVIDO"
+# ID do catalog.json no Google Drive. Ele fica em app/_private.py (fora do git, para o
+# repositório público não revelar o Drive). Sem esse arquivo o ID fica vazio e o app usa
+# o cache local ou o catálogo que vem junto do projeto; também dá para pôr no settings.json.
+try:
+    from ._private import CATALOG_FILE_ID as DEFAULT_CATALOG_FILE_ID
+except ImportError:
+    DEFAULT_CATALOG_FILE_ID = ""
 
 DEFAULTS = {"catalog_file_id": DEFAULT_CATALOG_FILE_ID}
 

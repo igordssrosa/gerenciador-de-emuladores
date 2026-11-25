@@ -176,7 +176,10 @@ def refresh() -> Catalog:
     paths.ensure_dirs()
     with tempfile.TemporaryDirectory() as tmp:
         tmp_file = Path(tmp) / "catalog.json"
-        result = gdown.download(id=file_id, output=str(tmp_file), quiet=True)
+        try:
+            result = gdown.download(id=file_id, output=str(tmp_file), quiet=True)
+        except Exception as exc:  # o texto do gdown traz o link com o ID; não repassamos
+            raise CatalogError("Não foi possível baixar o catálogo (sem internet ou link privado?).") from exc
         if not result or not tmp_file.exists():
             raise CatalogError("Não foi possível baixar o catálogo (sem internet ou link privado?).")
         catalog = _read(tmp_file)  # valida antes de substituir o cache bom
