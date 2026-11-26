@@ -10,7 +10,7 @@ Launcher para Windows que organiza seus emuladores e jogos, baixa tudo sob deman
 
 [**Baixar**](https://github.com/igordssrosa/gerenciador-de-emuladores/releases/latest) · [Instalação](#instalação) · [Atualizar](#atualizar)
 
-<img src="docs/home-v3.png" alt="Tela inicial, com menu lateral e um bloco por emulador" width="780">
+<img src="docs/home-v4.png" alt="Tela inicial, com menu lateral e um bloco por emulador" width="780">
 
 </div>
 
@@ -31,8 +31,8 @@ O Gerenciador de Emuladores reúne em uma única janela os emuladores e os jogos
 | **Sem dependências**          | Instalador por usuário, sem privilégios de administrador e sem precisar de Python.                  |
 
 <div align="center">
-<img src="docs/jogos-v3.png" alt="Biblioteca de um emulador no tema claro, com um download em andamento" width="48%">
-<img src="docs/controles-v3.png" alt="Popup de Controles: clique num botão, aperte a tecla nova e salve" width="48%">
+<img src="docs/jogos-v4.png" alt="Biblioteca em blocos, com um download em andamento" width="48%">
+<img src="docs/controles-v4.png" alt="Popup de Controles: clique num botão, aperte a tecla nova e salve" width="48%">
 <img src="docs/biblioteca-v3.png" alt="Biblioteca em lista no tema escuro, com filtros e busca por nome" width="48%">
 <img src="docs/saves-v3.png" alt="Tela do jogo no tema escuro, com os save states e o save atual" width="48%">
 </div>
@@ -76,7 +76,7 @@ Confira se há conexão com a internet e use **Atualizar catálogo** no menu lat
 
 ## Atualizar
 
-<img src="docs/atualizacao-v3.png" alt="Rodapé do menu lateral com o botão Nova versão" width="220" align="right">
+<img src="docs/atualizacao-v4.png" alt="Rodapé do menu lateral com o botão Nova versão" width="220" align="right">
 
 Quando existe uma versão nova, aparece o botão **Nova versão** no menu lateral. Ao clicar e confirmar, o app baixa a atualização, fecha, instala por cima e abre de novo sozinho. Seus jogos, saves e save states não são mexidos.
 
