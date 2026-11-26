@@ -42,8 +42,8 @@
   const playing = new Set();
   const mockControls = new Map();   // teclas "salvas" nesta sessão do mock
   window.pywebview = { api: {
-    get_library: async () => ({ emulators: [{ id: "mgba", name: "mGBA", platform: "Game Boy Advance", installed, has_controls: true, games }] }),
-    check_update: async () => ({ available: params.has("upd"), version: "1.1.6", url: "", can_install: true }),   // ?upd mostra o botão de versão nova
+    get_library: async () => ({ emulators: [{ id: "mgba", name: params.get("name") || "mGBA", platform: params.get("platform") || "Game Boy Advance", installed, has_controls: true, games }] }),   // ?name=melonDS&platform=Nintendo%20DS só troca o texto
+    check_update: async () => ({ available: params.has("upd"), version: "1.3.0", url: "", can_install: true }),   // ?upd mostra o botão de versão nova
     get_cover: async (id) => { await new Promise((r) => setTimeout(r, 150)); return coverFor(id); },
     get_emulator_icon: async () => null,
     start_download: async (id) => { live[id] = { t0: Date.now() }; return { ok: true }; },
