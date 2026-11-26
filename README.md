@@ -22,6 +22,7 @@ O Gerenciador de Emuladores reúne em uma única janela os emuladores e os jogos
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | **Download sob demanda**      | Emuladores e jogos são baixados quando você pede, com barra de progresso e cancelamento.            |
 | **Save states**               | Lista os save states do emulador, do mais recente ao mais antigo, para carregar e jogar ou excluir. |
+| **Controles**                 | Troca as teclas de cada emulador por um popup, sem abrir o menu dele.                               |
 | **Saves do jogo**             | Importa e exporta o `.sav` de cada jogo.                                                            |
 | **Biblioteca**                | Jogos em blocos ou em lista, com capas, filtros (todos, prontos, não baixados) e busca por nome.    |
 | **Tema claro e escuro**       | Segue o tema do Windows e pode ser trocado pelo menu lateral.                                       |
