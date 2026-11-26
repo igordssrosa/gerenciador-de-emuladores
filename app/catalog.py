@@ -10,7 +10,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import paths, settings
+from . import controls as keymap, paths, settings
 
 
 class CatalogError(Exception):
@@ -25,6 +25,25 @@ class Game:
     rom_file_id: str
     rom_filename: str
     cover_file_id: str
+
+
+@dataclass
+class ControlButton:
+    id: str
+    label: str
+    group: str    # só organiza o desenho do popup: dpad | face | shoulder | system
+    key: str      # nome da chave no arquivo de configuração do emulador (ex.: "keyA" no mGBA, "A" no melonDS)
+    default: str  # tecla padrão, como `event.code` do navegador (ex.: "KeyK")
+
+
+@dataclass
+class Controls:
+    """Onde ficam as teclas do emulador, para o popup de Controles ler e gravar."""
+    file: str            # relativo à pasta do emulador
+    format: str          # "ini" (chave=valor) ou "toml" (chave = valor)
+    section: str
+    key_encoding: str    # como o valor é gravado; por enquanto só "qt" (código de tecla do Qt)
+    buttons: list[ControlButton]
 
 
 @dataclass
@@ -49,6 +68,8 @@ class Emulator:
     # o jogo já carregando um deles (ex.: ["-t", "{state}", "{rom}"]). Opcionais: sem eles não há lista de states.
     state_extensions: list[str] = field(default_factory=list)
     state_args: list[str] = field(default_factory=list)
+    # Teclas do emulador (popup "Controles"). Opcional: sem isso o emulador não tem o botão.
+    controls: Controls | None = None
 
 
 @dataclass
@@ -149,8 +170,40 @@ def parse(raw: dict) -> Catalog:
             window_mode=_check_window_mode(e.get("window_mode", "default"), where),
             state_extensions=[x.lower() for x in e.get("state_extensions", [])],
             state_args=_check_state_args(list(e.get("state_args", [])), where),
+            controls=_parse_controls(e.get("controls"), where),
         ))
     return Catalog(version=int(raw.get("version", 1)), emulators=emulators)
+
+
+def _parse_controls(raw: dict | None, where: str) -> Controls | None:
+    if raw is None:
+        return None
+    here = f"controls do {where}"
+    file = str(_req(raw, "file", here))
+    _check_setup_files({file: ""}, here)  # mesma regra de caminho seguro: nada absoluto nem com ".."
+    fmt = _req(raw, "format", here)
+    if fmt not in ("ini", "toml"):
+        raise CatalogError(f"format do {here} deve ser 'ini' ou 'toml' (veio '{fmt}').")
+    encoding = raw.get("key_encoding", "qt")
+    if encoding != "qt":
+        raise CatalogError(f"key_encoding do {here} deve ser 'qt' (veio '{encoding}').")
+    buttons, seen = [], set()
+    for b in _req(raw, "buttons", here):
+        bid = _req(b, "id", here)
+        if bid in seen:
+            raise CatalogError(f"Botão repetido em {here}: '{bid}'.")
+        seen.add(bid)
+        group = b.get("group", "face")
+        if group not in ("dpad", "face", "shoulder", "system"):
+            raise CatalogError(f"group do botão '{bid}' em {here} deve ser dpad, face, shoulder ou system.")
+        default = _req(b, "default", here)
+        if default not in keymap.DOM_TO_QT:
+            raise CatalogError(f"Tecla padrão '{default}' do botão '{bid}' em {here} não é uma tecla aceita.")
+        buttons.append(ControlButton(id=bid, label=_req(b, "label", here), group=group,
+                                     key=_req(b, "key", here), default=default))
+    if not buttons:
+        raise CatalogError(f"{here} precisa de pelo menos um botão.")
+    return Controls(file=file, format=fmt, section=_req(raw, "section", here), key_encoding=encoding, buttons=buttons)
 
 
 def _check_state_args(args: list[str], where: str) -> list[str]:
