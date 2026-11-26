@@ -173,6 +173,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.015em; }
 .btn-playing { border-color: var(--accent-text); background: var(--accent-soft); color: var(--accent-text); cursor: default; }
 .btn-danger { background: var(--warn-solid); color: var(--warn-ink); }
 .btn-danger:hover { opacity: .9; }
+.btn:disabled, .btn:disabled:hover { opacity: .45; cursor: not-allowed; box-shadow: none; }
 
 .btn-small {
   padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel);
@@ -339,16 +340,59 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.015em; }
 
 /* ---------- janela de confirmação e avisos ---------- */
 
-dialog.confirm {
-  width: min(92vw, 440px); padding: 26px;
+dialog.confirm, dialog.controls {
+  padding: 26px;
   border: 1px solid var(--line-strong); border-radius: var(--radius-block);
   background: var(--panel); color: var(--ink); box-shadow: var(--shadow-pop);
 }
-dialog.confirm::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-dialog.confirm h2 { margin-bottom: 10px; color: var(--ink); font-size: 20px; letter-spacing: -.02em; }
+dialog.confirm::backdrop, dialog.controls::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+dialog.confirm h2, dialog.controls h2 { margin-bottom: 10px; color: var(--ink); font-size: 20px; letter-spacing: -.02em; }
 dialog.confirm p { color: var(--muted); font-size: 14px; line-height: 1.55; }
+dialog.confirm { width: min(92vw, 440px); }
 .confirm-actions { display: flex; gap: 10px; margin-top: 22px; }
 .confirm-actions .btn { flex: 1; }
+
+/* ---------- popup de controles: cada botão do jogo é uma tecla de teclado ---------- */
+
+dialog.controls { width: min(94vw, 580px); }
+.pad { --cap: 62px; display: grid; gap: 16px; margin-top: 18px; padding: 18px; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-block); }
+.pad-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pad-top .keycap, .pad-system .keycap { width: 120px; height: 48px; flex-direction: row; gap: 10px; }
+.pad-system { justify-content: center; gap: 28px; }
+.pad-mid { align-items: flex-end; padding: 4px 8px; }
+.pad-grid { display: grid; grid-template-columns: repeat(3, var(--cap)); grid-template-rows: repeat(3, var(--cap)); gap: 4px; }
+
+.keycap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 0; width: 100%; height: 100%; padding: 0 6px;
+  background: var(--panel); color: var(--ink); font: inherit; cursor: pointer;
+  border: 1px solid var(--line-strong); border-bottom-width: 3px; border-radius: var(--radius);   /* a borda de baixo grossa dá o relevo de tecla */
+  transition: border-color .15s, background .15s, transform .08s;
+}
+.cap-name { color: var(--muted); font-size: 11px; line-height: 1; }
+.cap-key { font-size: 18px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; }
+.keycap:hover:not(:disabled) { border-color: var(--accent-text); }
+.keycap:active:not(:disabled) { transform: translateY(1px); border-bottom-width: 2px; }
+.keycap:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.keycap:disabled { opacity: .5; cursor: not-allowed; }
+.keycap.is-capturing { border-color: var(--accent-text); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+.keycap.is-capturing .cap-key { color: var(--accent-text); }
+.keycap.is-empty .cap-key { color: var(--muted); font-weight: 400; }
+.keycap.is-conflict { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }
+
+.pad-status { min-height: 21px; margin-top: 14px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.pad-status.is-warn { color: var(--warn); }
+.pad-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+.pad-actions .spacer { flex: 1; }
+@media (max-width: 520px) {
+  dialog.controls { padding: 18px; }
+  .pad { --cap: 44px; padding: 12px; }
+  .pad-mid { padding: 4px 0; gap: 8px; }
+  .pad-top .keycap, .pad-system .keycap { width: 92px; height: 44px; gap: 6px; }
+  .cap-key { font-size: 16px; }
+  .pad-system { gap: 12px; }
+  .pad-actions .btn { padding-inline: 12px; }
+}
 
 #toasts { position: fixed; left: calc(50% + 126px); bottom: 24px; z-index: 50; display: grid; gap: 8px; transform: translateX(-50%); width: min(92vw, 460px); }
 .toast {

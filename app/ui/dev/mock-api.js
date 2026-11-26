@@ -40,8 +40,9 @@
   ] : [];
   const live = {};   // downloads simulados
   const playing = new Set();
+  const mockControls = new Map();   // teclas "salvas" nesta sessão do mock
   window.pywebview = { api: {
-    get_library: async () => ({ emulators: [{ id: "mgba", name: "mGBA", platform: "Game Boy Advance", installed, games }] }),
+    get_library: async () => ({ emulators: [{ id: "mgba", name: "mGBA", platform: "Game Boy Advance", installed, has_controls: true, games }] }),
     check_update: async () => ({ available: params.has("upd"), version: "1.1.6", url: "", can_install: true }),   // ?upd mostra o botão de versão nova
     get_cover: async (id) => { await new Promise((r) => setTimeout(r, 150)); return coverFor(id); },
     get_emulator_icon: async () => null,
@@ -61,6 +62,19 @@
     get_running: async () => ({ running: [...playing], errors: {} }),
 
     // ---- saves (simulados em memória; ?saves=none|some|blank|open) ----
+    // Controles: ?mock=...&pad=ds mostra X/Y, &running mostra o aviso de jogo aberto.
+    get_controls: async () => {
+      const ds = params.get("pad") === "ds";
+      const b = (id, label, group, code) => ({ id, label, group, code, display: "", default_code: code });
+      const list = [b("Up", "Cima", "dpad", "KeyW"), b("Down", "Baixo", "dpad", "KeyS"), b("Left", "Esquerda", "dpad", "KeyA"),
+        b("Right", "Direita", "dpad", "KeyD"), b("A", "A", "face", "KeyK"), b("B", "B", "face", "KeyJ"),
+        ...(ds ? [b("X", "X", "face", "KeyI"), b("Y", "Y", "face", "KeyU")] : []),
+        b("L", "L", "shoulder", "KeyQ"), b("R", "R", "shoulder", "KeyE"), b("Start", "Start", "system", "Enter"),
+        b("Select", "Select", "system", "Space")];
+      mockControls.forEach((code, id) => { const x = list.find((i) => i.id === id); if (x) x.code = code; });
+      return { available: true, installed, running: params.has("running"), buttons: list };
+    },
+    save_controls: async (id, mapping) => { Object.entries(mapping).forEach(([k, v]) => mockControls.set(k, v)); return { ok: true }; },
     get_saves: async (id) => {
       const g = games.find((x) => x.id === id);
       if (!g) return { error: "Jogo não existe." };

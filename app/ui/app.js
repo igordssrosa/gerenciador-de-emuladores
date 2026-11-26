@@ -233,8 +233,8 @@ const svgWrap = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const ICON_GRID = svgWrap('<rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/>');
 const ICON_LIST = svgWrap('<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>');
 
-const pageHead = (title, sub) => h("header", { class: "page-head" },
-  h("div", {}, h("h1", {}, title), sub && h("p", { class: "sub-head" }, sub)));
+const pageHead = (title, sub, actions = null) => h("header", { class: "page-head" },
+  h("div", {}, h("h1", {}, title), sub && h("p", { class: "sub-head" }, sub)), actions);
 
 // ---------- início: resumo e um bloco por emulador ----------
 
@@ -282,8 +282,13 @@ const normalize = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(
 function renderEmulator(emu) {
   const isReady = (g) => emu.installed && g.has_rom;
   const ready = emu.games.filter(isReady).length;
+  // "Controles" só aparece se o catálogo descreve as teclas do emulador; sem o emulador instalado não há o que editar.
+  const controlsBtn = emu.has_controls && h("button", { class: "btn btn-get", type: "button", disabled: !emu.installed,
+    title: emu.installed ? "Mudar as teclas do emulador" : `O ${emu.name} é baixado junto com o primeiro jogo.`,
+    onclick: () => onControls(emu) }, "Controles");
   const section = h("section", { class: "emulator" },
-    pageHead(emu.name, `${emu.platform}: ${plural(emu.games.length, "jogo", "jogos")}, ${plural(ready, "pronto", "prontos")}`));
+    pageHead(emu.name, `${emu.platform}: ${plural(emu.games.length, "jogo", "jogos")}, ${plural(ready, "pronto", "prontos")}`,
+      controlsBtn || null));
   if (!emu.installed) section.append(h("p", { class: "hint" }, `O ${emu.name} é baixado junto com o primeiro jogo.`));
   if (!emu.games.length) {
     section.append(h("p", { class: "empty" },
@@ -632,6 +637,115 @@ function confirmDialog({ title, body, confirm, danger = false }) {
     document.body.append(dlg);
     dlg.showModal();
   });
+}
+
+// ---------- controles (teclas do emulador) ----------
+
+// Teclas aceitas (as mesmas do controls.py; a posição física `event.code` vale em qualquer layout de teclado).
+const CONTROL_KEY = /^(Key[A-Z]|Digit\d|Arrow(Up|Down|Left|Right)|Enter|Space|Backspace|Tab|F([1-9]|1[0-2]))$/;
+const KEY_NAMES = { Space: "Espaço", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" };
+const keyLabel = (code) => KEY_NAMES[code] || (/^Key[A-Z]$/.test(code) ? code.slice(3) : /^Digit\d$/.test(code) ? code.slice(5) : code);
+// Lugar de cada botão na cruz e no losango (grid-area: linha / coluna). Ids de outros emuladores que não estão aqui
+// vão para uma fileira extra, então um emulador novo no catálogo funciona sem mexer neste arquivo.
+const CROSS_CELL = { Up: "1 / 2", Left: "2 / 1", Right: "2 / 3", Down: "3 / 2" };
+const DIAMOND_CELL = { X: "1 / 2", Y: "2 / 1", A: "2 / 3", B: "3 / 2" };
+
+/** Popup para ver e trocar as teclas do emulador: clica num botão, aperta a tecla, salva. */
+async function onControls(emu) {
+  const data = await api().get_controls(emu.id);
+  if (data.error) return toast(data.error);
+  if (!data.available) return toast(`O catálogo não tem controles para o ${emu.name}.`);
+  if (!data.installed) return toast(`O ${emu.name} é baixado junto com o primeiro jogo.`, "info");
+
+  const buttons = data.buttons;
+  const label = (id) => buttons.find((b) => b.id === id).label;
+  const saved = new Map(buttons.map((b) => [b.id, b.code]));   // o que está gravado no emulador
+  const keys = new Map(saved);                                  // o que está na tela (ainda não salvo)
+  const caps = new Map();                                       // id -> botão desenhado
+  let capturing = null;      // id do botão esperando uma tecla
+  let conflicts = [];        // botões que perderam a tecla para outro nesta troca
+  let notice = "";           // aviso de tecla recusada
+  let swallowUp = null;      // tecla cujo "soltar" não pode virar clique no botão (Espaço)
+  let saving = false;
+
+  const cap = (b, cell) => {
+    const el = h("button", { class: "keycap", type: "button", disabled: data.running,
+      onclick: () => { capturing = capturing === b.id ? null : b.id; notice = ""; conflicts = []; paint(); } },
+      h("span", { class: "cap-name" }, b.label), h("span", { class: "cap-key" }));
+    if (cell) el.style.gridArea = cell;
+    caps.set(b.id, el);
+    return el;
+  };
+  const group = (name) => buttons.filter((b) => b.group === name);
+  const grid = (name, cells) => h("div", { class: `pad-grid pad-${name}` },
+    group(name).filter((b) => cells[b.id]).map((b) => cap(b, cells[b.id])));
+  const loose = [...group("dpad").filter((b) => !CROSS_CELL[b.id]), ...group("face").filter((b) => !DIAMOND_CELL[b.id])];
+
+  const status = h("p", { class: "pad-status", "aria-live": "polite" });
+  const save = h("button", { class: "btn btn-play", type: "button", disabled: true, onclick: onSave }, "Salvar");
+  const reset = h("button", { class: "btn btn-get", type: "button", disabled: data.running,
+    onclick: () => { buttons.forEach((b) => keys.set(b.id, b.default_code)); capturing = null; notice = ""; conflicts = []; paint(); } },
+    "Restaurar padrão");
+  const dlg = h("dialog", { class: "controls", "aria-label": `Controles do ${emu.name}` },
+    h("h2", {}, `Controles do ${emu.name}`),
+    h("div", { class: "pad" },
+      h("div", { class: "pad-row pad-top" }, group("shoulder").map((b) => cap(b))),
+      h("div", { class: "pad-row pad-mid" }, grid("dpad", CROSS_CELL), grid("face", DIAMOND_CELL)),
+      loose.length ? h("div", { class: "pad-row" }, loose.map((b) => cap(b))) : null,
+      h("div", { class: "pad-row pad-system" }, group("system").map((b) => cap(b)))),
+    status,
+    h("div", { class: "pad-actions" }, reset, h("span", { class: "spacer" }),
+      h("button", { class: "btn btn-get", type: "button", onclick: () => dlg.close() }, "Cancelar"), save));
+
+  function paint() {
+    const changed = buttons.some((b) => keys.get(b.id) !== saved.get(b.id));
+    for (const [id, el] of caps) {
+      const code = keys.get(id);
+      el.querySelector(".cap-key").textContent = capturing === id ? "…" : code ? keyLabel(code) : "—";
+      el.classList.toggle("is-capturing", capturing === id);
+      el.classList.toggle("is-empty", !code && capturing !== id);
+      el.classList.toggle("is-conflict", conflicts.includes(id));
+      el.setAttribute("aria-label", `${label(id)}: ${code ? keyLabel(code) : "sem tecla"}`);
+    }
+    const empty = buttons.filter((b) => !keys.get(b.id)).length;
+    status.className = `pad-status${notice || conflicts.length || data.running ? " is-warn" : ""}`;
+    status.textContent = notice ? notice   // tecla recusada: a captura continua, mas o aviso vem primeiro
+      : capturing ? `Aperte a tecla para ${label(capturing)}. Esc cancela.`
+      : data.running ? `Tem um jogo aberto no ${emu.name}. Feche o emulador para mudar os controles.`
+      : conflicts.length ? `Essa tecla era de ${conflicts.map(label).join(", ")}, que ficou sem tecla.`
+      : empty ? `${plural(empty, "botão está", "botões estão")} sem tecla.`
+      : "Clique num botão e aperte a tecla nova.";
+    save.disabled = !changed || data.running || saving;
+  }
+
+  dlg.addEventListener("keydown", (e) => {
+    if (!capturing) return;               // fora da captura o teclado funciona normal (Tab, Enter nos botões)
+    e.preventDefault(); e.stopPropagation();
+    if (e.repeat) return;
+    if (e.code === "Escape") { capturing = null; notice = ""; return paint(); }
+    if (!CONTROL_KEY.test(e.code)) { notice = "Essa tecla não pode ser usada. Tente outra."; return paint(); }
+    conflicts = buttons.filter((b) => b.id !== capturing && keys.get(b.id) === e.code).map((b) => b.id);
+    conflicts.forEach((id) => keys.set(id, null));   // a tecla é de um botão só: o outro fica sem tecla
+    keys.set(capturing, e.code);
+    capturing = null; notice = ""; swallowUp = e.code;
+    paint();
+  });
+  dlg.addEventListener("keyup", (e) => { if (swallowUp === e.code) { e.preventDefault(); swallowUp = null; } });
+  dlg.addEventListener("cancel", (e) => { if (capturing) e.preventDefault(); });   // Esc na captura não fecha o popup
+  dlg.addEventListener("close", () => dlg.remove());
+
+  async function onSave() {
+    saving = true; paint();
+    const res = await api().save_controls(emu.id, Object.fromEntries(keys));
+    saving = false;
+    if (res.error) { toast(res.error); return paint(); }
+    dlg.close();
+    toast("Controles salvos.", "ok");
+  }
+
+  document.body.append(dlg);
+  paint();
+  dlg.showModal();
 }
 
 async function onDeleteState(state) {
