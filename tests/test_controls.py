@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import controls
+from app import catalog, controls
 
 
 class KeyTableTests(unittest.TestCase):
@@ -103,6 +103,47 @@ class FileEditorTests(unittest.TestCase):
         self.put("[a]\nk=1\n")
         controls.write_values(self.path, "a", {"k": 2}, "=")
         self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["config.ini", "config.ini.bak"])
+
+
+class MappingTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.file = self.dir / "config.ini"
+        self.cfg = catalog.Controls(
+            file="config.ini", format="ini", section="s", key_encoding="qt",
+            buttons=[catalog.ControlButton("A", "A", "face", "keyA", "KeyK"),
+                     catalog.ControlButton("B", "B", "face", "keyB", "KeyJ")])
+
+    def test_ida_e_volta(self):
+        controls.save_mapping(self.cfg, self.dir, {"A": "KeyK", "B": None})
+        self.assertEqual(controls.load_mapping(self.cfg, self.dir), {"A": "KeyK", "B": None})
+        self.assertEqual(self.file.read_text(encoding="utf-8"), "[s]\nkeyA=75\nkeyB=-1\n")
+
+    def test_formato_toml_usa_espacos_ao_redor_do_igual(self):
+        self.cfg.format = "toml"
+        controls.save_mapping(self.cfg, self.dir, {"A": "KeyK"})
+        self.assertEqual(self.file.read_text(encoding="utf-8"), "[s]\nkeyA = 75\n")
+
+    def test_valor_sem_traducao_le_como_sem_tecla(self):
+        self.file.write_text("[s]\nkeyA=-1\nkeyB=16777248\n", encoding="utf-8")
+        self.assertEqual(controls.load_mapping(self.cfg, self.dir), {"A": None, "B": None})
+
+    def test_arquivo_ausente_le_tudo_sem_tecla(self):
+        self.assertEqual(controls.load_mapping(self.cfg, self.dir), {"A": None, "B": None})
+
+    def test_mapeamento_invalido_nao_grava(self):
+        original = b"[s]\nkeyA=75\nkeyB=74\n"
+        casos = {"tecla repetida": {"A": "KeyK", "B": "KeyK"},
+                 "código desconhecido": {"A": "NumpadEnter"},
+                 "id desconhecido": {"Z": "KeyK"}}
+        for nome, mapping in casos.items():
+            self.file.write_bytes(original)
+            with self.subTest(nome), self.assertRaises(controls.ControlsError):
+                controls.save_mapping(self.cfg, self.dir, mapping)
+            self.assertEqual(self.file.read_bytes(), original)
+            self.assertFalse((self.dir / "config.ini.bak").exists())
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from pathlib import Path
 
-from . import catalog, downloader, launcher, saves, updates
+from . import catalog, controls, downloader, launcher, saves, updates
 
 # Fatias da barra de progresso quando o emulador também precisa ser baixado.
 _EMU_SHARE = 0.35      # baixar o emulador
@@ -80,6 +80,7 @@ class Api:
                 "name": emu.name,
                 "platform": emu.platform,
                 "installed": downloader.is_emulator_installed(emu),
+                "has_controls": emu.controls is not None,
                 "games": games,
             })
         return {"emulators": emulators}
@@ -318,6 +319,55 @@ class Api:
         with self._lock:
             errors, self._play_errors = self._play_errors, {}
             return {"running": sorted(self._running), "errors": errors}
+
+    # ---------- controles (teclas do emulador) ----------
+
+    def _emulator(self, emulator_id: str):
+        """Acha o emulador pelo ID, ou levanta CatalogError."""
+        if self._catalog:
+            for emu in self._catalog.emulators:
+                if emu.id == emulator_id:
+                    return emu
+        raise catalog.CatalogError(f"Emulador '{emulator_id}' não existe no catálogo.")
+
+    def _emulator_running(self, emu) -> bool:
+        with self._lock:
+            return any(g.id in self._running for g in emu.games)
+
+    def get_controls(self, emulator_id: str) -> dict:
+        """Teclas atuais do emulador para o popup de Controles."""
+        try:
+            emu = self._emulator(emulator_id)
+        except catalog.CatalogError as exc:
+            return {"error": str(exc)}
+        installed = downloader.is_emulator_installed(emu)
+        result = {"available": emu.controls is not None, "installed": installed,
+                  "running": self._emulator_running(emu), "buttons": []}
+        if emu.controls is None or not installed:
+            return result
+        current = controls.load_mapping(emu.controls, downloader.emulator_dir(emu))
+        result["buttons"] = [{
+            "id": b.id, "label": b.label, "group": b.group,
+            "code": current[b.id], "display": controls.code_label(current[b.id]) if current[b.id] else "",
+            "default_code": b.default,
+        } for b in emu.controls.buttons]
+        return result
+
+    def save_controls(self, emulator_id: str, mapping: dict) -> dict:
+        """Grava as teclas no arquivo do emulador. Só com o emulador fechado: ele reescreve o arquivo ao sair."""
+        try:
+            emu = self._emulator(emulator_id)
+            if emu.controls is None:
+                return {"error": f"O catálogo não tem controles para o {emu.name}."}
+            if not downloader.is_emulator_installed(emu):
+                return {"error": f"O {emu.name} não está instalado. Baixe um jogo primeiro."}
+            with self._lock:  # o lock evita abrir o jogo no meio da gravação
+                if any(g.id in self._running for g in emu.games):
+                    return {"error": f"Feche o jogo no {emu.name} antes de mudar os controles."}
+                controls.save_mapping(emu.controls, downloader.emulator_dir(emu), dict(mapping))
+        except (catalog.CatalogError, controls.ControlsError) as exc:
+            return {"error": str(exc)}
+        return {"ok": True}
 
     # ---------- saves ----------
 

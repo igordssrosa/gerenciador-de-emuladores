@@ -7,6 +7,10 @@ import os
 import re
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # só para as anotações: importar de verdade criaria um ciclo com catalog.py
+    from .catalog import Controls
 
 
 class ControlsError(Exception):
@@ -145,3 +149,27 @@ def write_values(path: Path, section: str, values: dict[str, int], sep: str) -> 
         os.replace(tmp, path)
     except OSError as exc:
         raise ControlsError(f"Não consegui gravar {path.name}: {exc.strerror or exc}") from exc
+
+
+# ---------- mapeamento de botões ----------
+
+def load_mapping(cfg: "Controls", base_dir: Path) -> dict[str, str | None]:
+    """Tecla atual de cada botão do catálogo (id -> `event.code`, ou None se estiver sem tecla)."""
+    values = read_values(base_dir / cfg.file, cfg.section, [b.key for b in cfg.buttons])
+    return {b.id: (qt_to_code(values[b.key]) if values[b.key] is not None else None) for b in cfg.buttons}
+
+
+def save_mapping(cfg: "Controls", base_dir: Path, mapping: dict[str, str | None]) -> None:
+    """Grava as teclas (id -> `event.code` ou None). Confere tudo antes de mexer no arquivo."""
+    by_id = {b.id: b for b in cfg.buttons}
+    for button_id, code in mapping.items():
+        if button_id not in by_id:
+            raise ControlsError(f"Botão desconhecido: '{button_id}'.")
+        if code is not None and code not in DOM_TO_QT:
+            raise ControlsError(f"A tecla '{code}' não pode ser usada.")
+    used = [code for code in mapping.values() if code is not None]
+    if len(used) != len(set(used)):
+        raise ControlsError("Duas teclas iguais: cada botão precisa de uma tecla diferente.")
+    # sem tecla = -1, o valor que os emuladores usam para "não atribuído"
+    values = {by_id[i].key: (DOM_TO_QT[code] if code else -1) for i, code in mapping.items()}
+    write_values(base_dir / cfg.file, cfg.section, values, "=" if cfg.format == "ini" else " = ")
