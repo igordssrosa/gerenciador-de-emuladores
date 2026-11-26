@@ -7,9 +7,17 @@
   const mode = params.get("mock") || "two";
   const covers = params.get("cov") || "";   // pasta com fr.jpg e em.png
 
+  // Os dois emuladores do catálogo real (mGBA e melonDS) com os jogos de cada um: [id, título, subtítulo, ROM baixada?]
   const real = [
     ["pokemon-firered-ptbr", "Pokémon FireRed", "", true],
     ["pokemon-emerald-ptbr", "Pokémon Emerald", "PT-BR", false],
+    ["zelda-a-link-to-the-past-four-swords", "The Legend of Zelda: A Link to the Past & Four Swords", "", true],
+    ["zelda-the-minish-cap", "The Legend of Zelda: The Minish Cap", "", false],
+  ];
+  const realDs = [
+    ["pokemon-heartgold-us", "Pokémon HeartGold", "", true],
+    ["pokemon-soulsilver-us", "Pokémon SoulSilver", "", false],
+    ["new-super-mario-bros-br", "New Super Mario Bros.", "", true],
   ];
   const extra = ["Ruby", "Sapphire", "LeafGreen", "Mother 3", "Metroid Fusion", "Advance Wars", "Golden Sun",
     "Fire Emblem", "Kirby Nightmare", "Wario Ware", "Castlevania Aria", "Zelda Minish Cap", "Sonic Advance",
@@ -17,10 +25,14 @@
     "Pokémon Pinball", "Yoshi's Island", "Boktai", "Astro Boy", "Dragon Ball Z", "Tactics Ogre",
     "Mario & Luigi", "Rhythm Tengoku", "Kuru Kuru Kururin", "Gunstar Super Heroes"];
 
-  let games = real.map(([id, title, subtitle, has]) => ({ id, title, subtitle, has_rom: has }));
+  const toGames = (list) => list.map(([id, title, subtitle, has]) => ({ id, title, subtitle, has_rom: has }));
+  let games = toGames(real);   // jogos do mGBA
   if (mode === "many") {
     games = games.concat(extra.map((t, i) => ({ id: `g${i}`, title: t, subtitle: i % 3 ? "" : "PT-BR", has_rom: i % 4 === 0 })));
   }
+  const dsGames = toGames(realDs);   // jogos do melonDS
+  const allGames = () => games.concat(dsGames);
+  const isDs = (gameId) => dsGames.some((g) => g.id === gameId);
   const installed = mode !== "fresh";
 
   const coverFor = (id) => {
@@ -42,7 +54,10 @@
   const playing = new Set();
   const mockControls = new Map();   // teclas "salvas" nesta sessão do mock
   window.pywebview = { api: {
-    get_library: async () => ({ emulators: [{ id: "mgba", name: params.get("name") || "mGBA", platform: params.get("platform") || "Game Boy Advance", installed, has_controls: true, games }] }),   // ?name=melonDS&platform=Nintendo%20DS só troca o texto
+    get_library: async () => ({ emulators: [
+      { id: "mgba", name: "mGBA", platform: "Game Boy Advance", installed, has_controls: true, games },
+      { id: "melonds", name: "melonDS", platform: "Nintendo DS", installed, has_controls: true, games: dsGames },
+    ] }),
     check_update: async () => ({ available: params.has("upd"), version: "1.3.0", url: "", can_install: true }),   // ?upd mostra o botão de versão nova
     get_cover: async (id) => { await new Promise((r) => setTimeout(r, 150)); return coverFor(id); },
     get_emulator_icon: async () => null,
@@ -52,7 +67,7 @@
       for (const [id, j] of Object.entries(live)) {
         const f = Math.min(1, (Date.now() - j.t0) / 6000);
         out[id] = { stage: f < .3 ? "emulador" : "rom", fraction: f, done: f * 16.8e6, total: 16.8e6, finished: f >= 1, error: null, cancelled: false };
-        if (f >= 1) { delete live[id]; const g = games.find((x) => x.id === id); if (g) g.has_rom = true; }
+        if (f >= 1) { delete live[id]; const g = allGames().find((x) => x.id === id); if (g) g.has_rom = true; }
       }
       return out;
     },
@@ -62,9 +77,9 @@
     get_running: async () => ({ running: [...playing], errors: {} }),
 
     // ---- saves (simulados em memória; ?saves=none|some|blank|open) ----
-    // Controles: ?mock=...&pad=ds mostra X/Y, &running mostra o aviso de jogo aberto.
-    get_controls: async () => {
-      const ds = params.get("pad") === "ds";
+    // Controles: o melonDS tem X/Y; &running mostra o aviso de jogo aberto; &dup simula duas teclas iguais.
+    get_controls: async (emuId) => {
+      const ds = emuId === "melonds";
       const b = (id, label, group, code) => ({ id, label, group, code, display: "", default_code: code });
       const list = [b("Up", "Cima", "dpad", "KeyW"), b("Down", "Baixo", "dpad", "KeyS"), b("Left", "Esquerda", "dpad", "KeyA"),
         b("Right", "Direita", "dpad", "KeyD"), b("A", "A", "face", "KeyK"), b("B", "B", "face", "KeyJ"),
@@ -77,17 +92,19 @@
     },
     save_controls: async (id, mapping) => { Object.entries(mapping).forEach(([k, v]) => mockControls.set(k, v)); return { ok: true }; },
     get_saves: async (id) => {
-      const g = games.find((x) => x.id === id);
+      const g = allGames().find((x) => x.id === id);
       if (!g) return { error: "Jogo não existe." };
+      const ds = isDs(id);
       return {
         game: { id: g.id, title: g.title, subtitle: g.subtitle, ready: g.has_rom && installed, has_rom: g.has_rom },
-        emulator: { id: "mgba", name: "mGBA" },
+        emulator: ds ? { id: "melonds", name: "melonDS" } : { id: "mgba", name: "mGBA" },
         save: saveState.exists ? { exists: true, blank: saveState.blank, size: 131072, modified: saveState.modified }
           : { exists: false, blank: false, size: 0, modified: null },
         backups: backups.map((b) => ({ ...b })),
-        states: [{ name: "firered.ss2", slot: "ss2", modified: Date.now() / 1000 - 600, size: 410000 },
-          { name: "firered.ss1", slot: "ss1", modified: Date.now() / 1000 - 86400, size: 410000 }],
-        can_play_state: true,
+        states: ds ? [{ name: "heartgold.ml1", slot: "ml1", modified: Date.now() / 1000 - 1800, size: 6200000 }]
+          : [{ name: "firered.ss2", slot: "ss2", modified: Date.now() / 1000 - 600, size: 410000 },
+            { name: "firered.ss1", slot: "ss1", modified: Date.now() / 1000 - 86400, size: 410000 }],
+        can_play_state: !ds,   // o melonDS não abre state pela linha de comando: o botão mostra "Indisponível"
         running: savesMode === "open" || playing.has(id),
       };
     },
@@ -95,7 +112,7 @@
     restore_backup: async (id, name, play) => { if (play) playing.add(id); return { ok: true }; },
     delete_backup: async (id, name) => { backups = backups.filter((b) => b.name !== name); return { ok: true }; },
     delete_save: async () => { saveState.exists = false; return { ok: true }; },
-    delete_game: async (id) => { const g = games.find((x) => x.id === id); if (g) g.has_rom = false; return { ok: true }; },
+    delete_game: async (id) => { const g = allGames().find((x) => x.id === id); if (g) g.has_rom = false; return { ok: true }; },
     pick_import_file: async () => ({ path: "C:\\Users\\voce\\Downloads\\firered-100pct.sav" }),
     import_save: async () => ({ ok: true }),
     export_save: async () => ({ ok: true, path: "C:\\Users\\voce\\Desktop\\firered.sav" }),

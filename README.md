@@ -10,13 +10,13 @@ Launcher para Windows que organiza seus emuladores e jogos, baixa tudo sob deman
 
 [**Baixar**](https://github.com/igordssrosa/gerenciador-de-emuladores/releases/latest) · [Instalação](#instalação) · [Atualizar](#atualizar)
 
-<img src="docs/home-v4.png" alt="Tela inicial, com menu lateral e um bloco por emulador" width="780">
+<img src="docs/home-v5.png" alt="Tela inicial, com os dois emuladores (mGBA e melonDS) e os jogos de cada um" width="780">
 
 </div>
 
 ## Visão geral
 
-O Gerenciador de Emuladores reúne em uma única janela os emuladores e os jogos de cada um. Nada é baixado até você pedir: com um clique em **Baixar**, o app obtém o emulador e o jogo, e com **Jogar** abre o título no emulador correto, já configurado.
+O Gerenciador de Emuladores reúne em uma única janela os emuladores e os jogos de cada um. O catálogo traz o **mGBA** (Game Boy Advance) e o **melonDS** (Nintendo DS); novos emuladores e jogos entram pelo catálogo, sem mudar o app. Nada é baixado até você pedir: com um clique em **Baixar**, o app obtém o emulador e o jogo, e com **Jogar** abre o título no emulador correto, já configurado.
 
 | Recurso                       | Descrição                                                                                           |
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -31,10 +31,10 @@ O Gerenciador de Emuladores reúne em uma única janela os emuladores e os jogos
 | **Sem dependências**          | Instalador por usuário, sem privilégios de administrador e sem precisar de Python.                  |
 
 <div align="center">
-<img src="docs/jogos-v4.png" alt="Biblioteca em blocos, com um download em andamento" width="48%">
-<img src="docs/controles-v4.png" alt="Popup de Controles: clique num botão, aperte a tecla nova e salve" width="48%">
-<img src="docs/biblioteca-v3.png" alt="Biblioteca em lista no tema escuro, com filtros e busca por nome" width="48%">
-<img src="docs/saves-v3.png" alt="Tela do jogo no tema escuro, com os save states e o save atual" width="48%">
+<img src="docs/jogos-v5.png" alt="mGBA: biblioteca em lista, com um download em andamento" width="48%">
+<img src="docs/melonds-v5.png" alt="melonDS: biblioteca em blocos, com os jogos de Nintendo DS" width="48%">
+<img src="docs/controles-v5.png" alt="Popup de Controles do melonDS: clique num botão, aperte a tecla nova e salve" width="48%">
+<img src="docs/saves-v5.png" alt="Tela do jogo, com os save states e o save atual" width="48%">
 </div>
 
 ## Instalação
