@@ -22,7 +22,7 @@
         {
           "id": "pokemon-firered-ptbr",
           "title": "Pokémon FireRed",
-          "subtitle": "PT-BR (English moves)",
+          "subtitle": "",
           "rom": { "file_id": "", "filename": "firered.gba" },
           "cover": { "file_id": "" }
         },

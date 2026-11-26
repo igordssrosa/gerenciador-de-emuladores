@@ -591,7 +591,9 @@ function renderSaves(emu) {
         h("span", { class: "row-meta" }, `${fmtDate(s.modified)}, ${stateLabel(s.slot)}, ${fmtKB(s.size)}`)),
       h("div", { class: "row-actions" },
         h("button", { class: "btn-small play", type: "button", disabled: locked || !g.ready || !d.can_play_state,
-          title: why || null, onclick: () => onPlay(g.id, s.name) }, "Carregar e jogar"),
+          title: why || null, onclick: () => onPlay(g.id, s.name) },
+          // Emulador sem como abrir state pela linha de comando (ex.: melonDS): mostra "Indisponível".
+          d.can_play_state ? "Carregar e jogar" : "Indisponível"),
         tool("Excluir", () => onDeleteState(s), { disabled: locked, danger: true, why: lockedWhy }))));
   }
   const states = h("section", { class: "block" },

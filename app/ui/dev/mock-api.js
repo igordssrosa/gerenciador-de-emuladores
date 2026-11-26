@@ -8,7 +8,7 @@
   const covers = params.get("cov") || "";   // pasta com fr.jpg e em.png
 
   const real = [
-    ["pokemon-firered-ptbr", "Pokémon FireRed", "PT-BR (English moves)", true],
+    ["pokemon-firered-ptbr", "Pokémon FireRed", "", true],
     ["pokemon-emerald-ptbr", "Pokémon Emerald", "PT-BR", false],
   ];
   const extra = ["Ruby", "Sapphire", "LeafGreen", "Mother 3", "Metroid Fusion", "Advance Wars", "Golden Sun",
