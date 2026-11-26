@@ -699,23 +699,26 @@ async function onControls(emu) {
 
   function paint() {
     const changed = buttons.some((b) => keys.get(b.id) !== saved.get(b.id));
+    // Dois botões na mesma tecla (o arquivo do emulador pode já vir assim): destaca e não deixa salvar.
+    const repeated = buttons.filter((b) => keys.get(b.id) && buttons.some((o) => o.id !== b.id && keys.get(o.id) === keys.get(b.id)));
     for (const [id, el] of caps) {
       const code = keys.get(id);
       el.querySelector(".cap-key").textContent = capturing === id ? "…" : code ? keyLabel(code) : "—";
       el.classList.toggle("is-capturing", capturing === id);
       el.classList.toggle("is-empty", !code && capturing !== id);
-      el.classList.toggle("is-conflict", conflicts.includes(id));
+      el.classList.toggle("is-conflict", conflicts.includes(id) || repeated.some((b) => b.id === id));
       el.setAttribute("aria-label", `${label(id)}: ${code ? keyLabel(code) : "sem tecla"}`);
     }
     const empty = buttons.filter((b) => !keys.get(b.id)).length;
-    status.className = `pad-status${notice || conflicts.length || data.running ? " is-warn" : ""}`;
+    status.className = `pad-status${notice || conflicts.length || repeated.length || data.running ? " is-warn" : ""}`;
     status.textContent = notice ? notice   // tecla recusada: a captura continua, mas o aviso vem primeiro
       : capturing ? `Aperte a tecla para ${label(capturing)}. Esc cancela.`
       : data.running ? `Tem um jogo aberto no ${emu.name}. Feche o emulador para mudar os controles.`
+      : repeated.length ? `${repeated.map((b) => label(b.id)).join(" e ")} usam a mesma tecla. Troque uma delas.`
       : conflicts.length ? `Essa tecla era de ${conflicts.map(label).join(", ")}, que ficou sem tecla.`
       : empty ? `${plural(empty, "botão está", "botões estão")} sem tecla.`
       : "Clique num botão e aperte a tecla nova.";
-    save.disabled = !changed || data.running || saving;
+    save.disabled = !changed || data.running || saving || repeated.length > 0;
   }
 
   dlg.addEventListener("keydown", (e) => {

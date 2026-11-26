@@ -71,6 +71,7 @@
         ...(ds ? [b("X", "X", "face", "KeyI"), b("Y", "Y", "face", "KeyU")] : []),
         b("L", "L", "shoulder", "KeyQ"), b("R", "R", "shoulder", "KeyE"), b("Start", "Start", "system", "Enter"),
         b("Select", "Select", "system", "Space")];
+      if (params.has("dup")) { list.find((i) => i.id === "A").code = "KeyA"; }
       mockControls.forEach((code, id) => { const x = list.find((i) => i.id === id); if (x) x.code = code; });
       return { available: true, installed, running: params.has("running"), buttons: list };
     },
